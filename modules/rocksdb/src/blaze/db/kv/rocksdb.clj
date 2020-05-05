@@ -9,12 +9,13 @@
   (:import
     [java.lang AutoCloseable]
     [java.io Closeable]
+    [java.nio ByteBuffer]
+    [java.util ArrayList]
     [org.rocksdb RocksDB RocksIterator WriteOptions WriteBatch
                  Options ColumnFamilyHandle DBOptions
                  ColumnFamilyDescriptor CompressionType ColumnFamilyOptions
                  BlockBasedTableConfig Statistics LRUCache BloomFilter
-                 CompactRangeOptions]
-    [java.util ArrayList]))
+                 CompactRangeOptions]))
 
 
 (set! *warn-on-reflection* true)
@@ -30,6 +31,9 @@
   (-seek [_ target]
     (.seek i ^bytes target)
     (iterator->key i))
+
+  (-seek-buffer! [_ target]
+    (.seek i ^ByteBuffer target))
 
   (-seek-for-prev [_ target]
     (.seekForPrev i ^bytes target)
@@ -51,8 +55,20 @@
     (.prev i)
     (iterator->key i))
 
-  (value [_]
+  (-valid? [_]
+    (.isValid i))
+
+  (-key [_]
+    (.key i))
+
+  (-key [_ buf]
+    (.key i ^ByteBuffer buf))
+
+  (-value [_]
     (.value i))
+
+  (-value [_ buf]
+    (.value i ^ByteBuffer buf))
 
   Closeable
   (close [_]

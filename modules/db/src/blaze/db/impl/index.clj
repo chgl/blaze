@@ -157,8 +157,8 @@
   (mk-resource
     context
     (codec/id (codec/resource-as-of-key->id k))
-    (codec/resource-as-of-value->hash v)
-    (codec/resource-as-of-value->state v)
+    (codec/resource-as-of-value->hash' v)
+    (codec/resource-as-of-value->state' v)
     (codec/resource-as-of-key->t k)))
 
 
@@ -168,36 +168,46 @@
     ;; we have to check that we are still on target, because otherwise we would
     ;; find the next resource
     (when (codec/bytes-eq-without-t target k)
-      (resource*** context k (kv/value resource-as-of-iter)))))
+      (kv/fill-value-buffer! resource-as-of-iter)
+      (resource*** context k (kv/value-buffer resource-as-of-iter)))))
 
 
-(defn resource* [context resource-as-of-iter tid id t]
+(defn- resource* [context resource-as-of-iter tid id t]
   (resource** context resource-as-of-iter (codec/resource-as-of-key tid id t)))
 
 
-(defn- hash-state-t** [k v]
-  [(codec/resource-as-of-value->hash v)
-   (codec/resource-as-of-value->state v)
-   (codec/resource-as-of-key->t k)])
-
-
-(defn- hash-state-t* [resource-as-of-iter target]
-  (when-let [k (kv/seek resource-as-of-iter target)]
-    ;; we have to check that we are still on target, because otherwise we would
-    ;; find the next resource
-    (when (codec/bytes-eq-without-t target k)
-      (hash-state-t** k (kv/value resource-as-of-iter)))))
+(defn- hash-state-t* [k v]
+  [(codec/resource-as-of-value->hash' v)
+   (codec/resource-as-of-value->state' v)
+   (codec/resource-as-of-key->t' k)])
 
 
 (defn hash-state-t
   "Returns a triple of `hash`, `state` and `t` of the resource with `tid` and
   `id` at or before `t`."
-  [resource-as-of-iter tid id t]
-  (hash-state-t* resource-as-of-iter (codec/resource-as-of-key tid id t)))
+  [resource-as-of-iter tid ^bytes id t]
+  (let [sb (kv/seek-buffer resource-as-of-iter)]
+    (.clear sb)
+    (codec/fill-resource-as-of-key! sb tid id t)
+    (.flip sb)
+    (kv/seek-buffer! resource-as-of-iter sb)
+    (when (kv/valid? resource-as-of-iter)
+      (kv/fill-key-buffer! resource-as-of-iter)
+      ;; we have to check that we are still on target, because otherwise we would
+      ;; find the next resource
+      (let [kb (kv/key-buffer resource-as-of-iter)
+            prefix-size (+ codec/tid-size (alength id))]
+          (.flip sb)
+          (when (< prefix-size (.mismatch sb kb))
+            (kv/fill-value-buffer! resource-as-of-iter)
+            (hash-state-t* kb (kv/value-buffer resource-as-of-iter)))))))
 
 
 (defn- resource-as-of-iter ^Closeable [snapshot]
-  (kv/new-iterator snapshot :resource-as-of-index))
+  (kv/new-value-buffer-iterator
+    (kv/new-iterator snapshot :resource-as-of-index)
+    codec/max-resource-as-of-key-size
+    codec/resource-as-of-value-size))
 
 
 (defn resource [{:blaze.db/keys [kv-store] :as context} tid id t]
@@ -219,15 +229,6 @@
   (resource-t** resource-as-of-iter (codec/resource-as-of-key tid id t)))
 
 
-(defn resource-state*
-  [resource-as-of-iter target]
-  (when-let [k (kv/seek resource-as-of-iter target)]
-    ;; we have to check that we are still on target, because otherwise we would
-    ;; find the next resource
-    (when (codec/bytes-eq-without-t target k)
-      (codec/resource-as-of-value->state (kv/value resource-as-of-iter)))))
-
-
 (defn- t-by-instant*
   [t-by-instant-iter instant]
   (when (kv/seek t-by-instant-iter (codec/tx-by-instant-key instant))
@@ -243,6 +244,16 @@
   (with-open [snapshot (kv/new-snapshot store)
               i (t-by-instant-iter snapshot)]
     (t-by-instant* i instant)))
+
+
+(defn- resource-state*
+  [resource-as-of-iter target]
+  (when-let [k (kv/seek resource-as-of-iter target)]
+    ;; we have to check that we are still on target, because otherwise we would
+    ;; find the next resource
+    (when (codec/bytes-eq-without-t target k)
+      (kv/fill-value-buffer! resource-as-of-iter)
+      (codec/resource-as-of-value->state' (kv/value-buffer resource-as-of-iter)))))
 
 
 (defn- num-of-instance-changes* ^long [i tid id t]
@@ -340,8 +351,8 @@
 
 
 (defn type-list
-  "Returns a reducible collection of `HashStateT` records of all resources of
-  type with `tid` ordered by resource id.
+  "Returns a reducible collection of resources of type with `tid` ordered by
+  resource id.
 
   The list starts at `start-id`."
   [{:blaze.db/keys [kv-store] :as context} tid start-id t]
@@ -354,13 +365,15 @@
           (loop [ret init
                  k (type-list-seek iter tid start-id t)]
             (if (and k (bytes/prefix= key-prefix k codec/tid-size))
-              (let [resource (resource*** context k (kv/value iter))]
-                (if-not (deleted? resource)
-                  (let [ret (rf ret resource)]
-                    (if (reduced? ret)
-                      @ret
-                      (recur ret (type-list-next iter k t))))
-                  (recur ret (type-list-next iter k t))))
+              (do
+                (kv/fill-value-buffer! iter)
+                (let [resource (resource*** context k (kv/value-buffer iter))]
+                  (if-not (deleted? resource)
+                    (let [ret (rf ret resource)]
+                      (if (reduced? ret)
+                        @ret
+                        (recur ret (type-list-next iter k t))))
+                    (recur ret (type-list-next iter k t)))))
               ret)))))))
 
 
@@ -380,8 +393,8 @@
 
 
 (defn compartment-list
-  "Returns a reducible collection of `HashStateT` records of all resources
-  linked to `compartment` and of type with `tid` ordered by resource id.
+  "Returns a reducible collection of all resources linked to `compartment` and
+  of type with `tid` ordered by resource id.
 
   The list starts at `start-id`.
 
@@ -402,7 +415,8 @@
                  k (kv/seek iter start-key)]
             (if (and k (key-valid? cmp-key k))
               (if-let [val (non-deleted-resource-resource
-                             context raoi tid (codec/compartment-resource-type-key->id k) t)]
+                             context raoi tid
+                             (codec/compartment-resource-type-key->id k) t)]
                 (let [ret (rf ret val)]
                   (if (reduced? ret)
                     @ret
@@ -417,13 +431,15 @@
        (< since-t ^long (codec/resource-as-of-key->t k))))
 
 
-(defn- instance-history-entry [context k v]
-  (mk-resource
-    context
-    (codec/id (codec/resource-as-of-key->id k))
-    (codec/resource-as-of-value->hash v)
-    (codec/resource-as-of-value->state v)
-    (codec/resource-as-of-key->t k)))
+(defn- instance-history-entry [context k i]
+  (kv/fill-value-buffer! i)
+  (let [v (kv/value-buffer i)]
+    (mk-resource
+      context
+      (codec/id (codec/resource-as-of-key->id k))
+      (codec/resource-as-of-value->hash' v)
+      (codec/resource-as-of-value->state' v)
+      (codec/resource-as-of-key->t k))))
 
 
 (defn instance-history
@@ -440,7 +456,7 @@
           (loop [ret init
                  k (kv/seek i (codec/resource-as-of-key tid id start-t))]
             (if (some-> k key-still-valid?)
-              (let [ret (rf ret (instance-history-entry context k (kv/value i)))]
+              (let [ret (rf ret (instance-history-entry context k i))]
                 (if (reduced? ret)
                   @ret
                   (recur ret (kv/next i))))
@@ -468,8 +484,7 @@
 
 
 (defn type-history
-  "Returns a reducible collection of `HashStateT` records of type history
-  entries.
+  "Returns a reducible collection of resources of type history entries.
 
   The history starts at `t`."
   [{:blaze.db/keys [kv-store] :as context} tid start-t start-id since-t]
@@ -510,8 +525,7 @@
 
 
 (defn system-history
-  "Returns a reducible collection of `HashStateT` records of system history
-  entries.
+  "Returns a reducible collection resources of system history entries.
 
   The history starts at `t`."
   [{:blaze.db/keys [kv-store] :as context} start-t start-tid start-id since-t]
@@ -564,7 +578,8 @@
                  k (search-param/first spi)]
             (if k
               (let [id (codec/search-param-value-key->id k)]
-                (if-let [resource (spv-resource* context snapshot k raoi tid id clauses t)]
+                (if-let [resource (spv-resource* context snapshot k raoi
+                                                 tid id clauses t)]
                   (let [ret (rf ret resource)]
                     (if (reduced? ret)
                       @ret

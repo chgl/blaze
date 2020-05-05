@@ -5,10 +5,18 @@
     [taoensso.timbre :as log])
   (:import
     [java.io Closeable]
+    [java.nio ByteBuffer]
     [java.util Arrays Comparator]))
 
 
 (set! *warn-on-reflection* true)
+(set! *unchecked-math* :warn-on-boxed)
+
+
+(defn- put-value [^ByteBuffer buffer ^bytes value ^long position ^long remaining]
+  (.put buffer ^bytes value 0 (Math/min (alength value) (int remaining)))
+  (.position buffer position)
+  (alength value))
 
 
 (deftype MemKvIterator [db cursor]
@@ -18,6 +26,14 @@
       (some-> (reset! cursor {:first x :rest xs})
               :first
               (key))))
+
+  (-seek-buffer! [_ buf]
+    (let [k (byte-array (.remaining ^ByteBuffer buf))]
+      (.get ^ByteBuffer buf k)
+      (alength k)
+      (vec k)
+      (let [[x & xs] (subseq db >= k)]
+        (reset! cursor {:first x :rest xs}))))
 
   (-seek-for-prev [_ k]
     (let [[x & xs] (rsubseq db <= k)]
@@ -46,14 +62,24 @@
       (kv/seek this (key prev))))
 
 
-  (valid [_]
+  (-valid? [_]
     (some? (:first @cursor)))
 
-  (key [_]
+  (-key [_]
     (some-> @cursor :first key))
 
-  (value [_]
+  (-key [i buf]
+    (let [result (put-value buf (kv/key i) (.position ^ByteBuffer buf) (.remaining ^ByteBuffer buf))]
+      (.limit ^ByteBuffer buf (Math/min (unchecked-add-int (.position ^ByteBuffer buf) result) (.limit ^ByteBuffer buf)))
+      result))
+
+  (-value [_]
     (some-> @cursor :first val))
+
+  (-value [i buf]
+    (let [result (put-value buf (kv/value i) (.position ^ByteBuffer buf) (.remaining ^ByteBuffer buf))]
+      (.limit ^ByteBuffer buf (Math/min (unchecked-add-int (.position ^ByteBuffer buf) result) (.limit ^ByteBuffer buf)))
+      result))
 
   Closeable
   (close [_]))

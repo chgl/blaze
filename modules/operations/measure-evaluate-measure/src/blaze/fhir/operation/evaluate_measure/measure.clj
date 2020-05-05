@@ -140,7 +140,7 @@
              groupIdx populationIdx)}
 
     :else
-    (when-ok [count (cql/evaluate-expression db now library subject-type expression)]
+    (when-ok [count (time (cql/evaluate-expression db now library subject-type expression))]
       (cond-> {:count count}
         code
         (assoc :code code)))))

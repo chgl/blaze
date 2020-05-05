@@ -1,12 +1,20 @@
 (ns blaze.db.kv
   "Protocols for key-value store backend implementations."
+  (:import
+    [java.io Closeable]
+    [java.nio ByteBuffer])
   (:refer-clojure :exclude [get key next]))
+
+
+(set! *warn-on-reflection* true)
 
 
 (defprotocol KvIterator
   "A mutable iterator over a KvSnapshot."
 
   (-seek [iter target])
+
+  (-seek-buffer! [iter target])
 
   (-seek-for-prev [iter target])
 
@@ -26,16 +34,11 @@
 
     Must not be called if a previous operation returned nil.")
 
-  (valid [iter]
-    "")
+  (-valid? [iter])
 
-  (key [iter]
-    "")
+  (-key [iter] [iter buf])
 
-  (value [iter]
-    "Returns the value of the current entry of this iterator.
-
-    Must not be called if a previous operation returned nil."))
+  (-value [iter] [iter buf]))
 
 
 (defn seek
@@ -49,6 +52,11 @@
   (-seek iter target))
 
 
+(defn seek-buffer!
+  [iter target]
+  (-seek-buffer! iter target))
+
+
 (defn seek-for-prev
   "Positions this iterator at the first entry whose key is at or before `target`
   and returns the key of the entry if there is one.
@@ -58,6 +66,120 @@
   Must not be called if a previous operation returned nil."
   [iter target]
   (-seek-for-prev iter target))
+
+
+(defn valid?
+  [iter]
+  (-valid? iter))
+
+
+(defn key
+  ([iter]
+   (-key iter))
+  ([iter buf]
+   (-key iter buf)))
+
+
+(defn value
+  "Returns the value of the current entry of this iterator.
+
+  Must not be called if a previous operation returned nil."
+  ([iter]
+   (-value iter))
+  ([iter buf]
+   (-value iter buf)))
+
+
+(defprotocol KvBufferIterator
+  (-seek-buffer [iter])
+
+  (-fill-key-buffer! [iter])
+
+  (-key-buffer [iter])
+
+  (-fill-value-buffer! [iter])
+
+  (-value-buffer [iter]))
+
+
+(defn ^ByteBuffer seek-buffer
+  [iter]
+  (-seek-buffer iter))
+
+
+(defn fill-key-buffer!
+  [iter]
+  (-fill-key-buffer! iter))
+
+
+(defn ^ByteBuffer key-buffer
+  [iter]
+  (-key-buffer iter))
+
+
+(defn fill-value-buffer!
+  [iter]
+  (-fill-value-buffer! iter))
+
+
+(defn ^ByteBuffer value-buffer
+  [iter]
+  (-value-buffer iter))
+
+
+(deftype KvBufferIteratorImpl
+  [^Closeable iter ^ByteBuffer seek-buffer ^ByteBuffer key-buffer
+   ^ByteBuffer value-buffer]
+  KvIterator
+  (-seek [_ target]
+    (seek iter target))
+
+  (-seek-buffer! [_ target]
+    (seek-buffer! iter target))
+
+  (next [_]
+    (next iter))
+
+  (-valid? [_]
+    (valid? iter))
+
+  (-key [_]
+    (key iter))
+
+  KvBufferIterator
+  (-seek-buffer [_]
+    seek-buffer)
+
+  (-fill-key-buffer! [_]
+    (.clear key-buffer)
+    (key iter key-buffer))
+
+  (-key-buffer [_]
+    key-buffer)
+
+  (-fill-value-buffer! [_]
+    (.clear value-buffer)
+    (value iter value-buffer))
+
+  (-value-buffer [_]
+    value-buffer)
+
+  Closeable
+  (close [_]
+    (.close iter)))
+
+
+(defn new-value-buffer-iterator
+  "Creates a new iterator based on conventional `iterator` with a shared, direct
+  byte buffer of `buffer-size` for its values.
+
+  "
+  [iterator key-buf-cap val-buf-cap]
+  (KvBufferIteratorImpl.
+    iterator
+    (ByteBuffer/allocateDirect key-buf-cap)
+    (ByteBuffer/allocateDirect key-buf-cap)
+    (ByteBuffer/allocateDirect val-buf-cap)))
 
 
 (defprotocol KvSnapshot

@@ -16,6 +16,11 @@
   #(satisfies? kv/KvIterator %))
 
 
+(s/def :blaze.db/kv-buffer-iterator
+  (s/and :blaze.db/kv-iterator
+         #(satisfies? kv/KvBufferIterator %)))
+
+
 (s/fdef kv/seek
   :args (s/cat :iter :blaze.db/kv-iterator :target bytes?)
   :ret (s/nilable bytes?))

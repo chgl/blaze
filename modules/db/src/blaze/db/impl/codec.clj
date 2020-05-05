@@ -34,6 +34,9 @@
 (def ^:const ^long tx-time-size 8)
 (def ^:const ^long max-id-size 64)
 
+(def ^:const ^long max-resource-as-of-key-size (+ tid-size max-id-size t-size))
+(def ^:const ^long resource-as-of-value-size (+ hash-size state-size))
+
 
 
 ;; ---- Instances -------------------------------------------------------------
@@ -339,17 +342,25 @@
 ;; ---- ResourceAsOf Index ----------------------------------------------------
 
 
+(defn fill-resource-as-of-key!
+  "Fills `buf` with `tid`, `id` and `t` so that it can be used as
+  resource-as-of-key."
+  [^ByteBuffer buf tid ^bytes id t]
+ (-> buf
+     (.putInt tid)
+     (.put id)
+     (.putLong (descending-long t))))
+
+
 (defn resource-as-of-key
   ([tid]
    (-> (ByteBuffer/allocate tid-size)
        (.putInt tid)
        (.array)))
   ([tid ^bytes id t]
-   (-> (ByteBuffer/allocate (+ tid-size (alength id) t-size))
-       (.putInt tid)
-       (.put id)
-       (.putLong (descending-long t))
-       (.array))))
+   (let [buf (ByteBuffer/allocate (+ tid-size (alength id) t-size))]
+     (fill-resource-as-of-key! buf tid id t)
+     (.array buf))))
 
 
 (defn resource-as-of-key->tid [k]
@@ -362,6 +373,10 @@
 
 (defn resource-as-of-key->t [^bytes k]
   (descending-long (.getLong (ByteBuffer/wrap k) (- (alength k) t-size))))
+
+
+(defn resource-as-of-key->t' [^ByteBuffer k]
+  (descending-long (.getLong k (- (.limit k) t-size))))
 
 
 (defn state [num-changes op]
@@ -386,7 +401,7 @@
 
 
 (defn resource-as-of-value [hash state]
-  (-> (ByteBuffer/allocate (+ hash-size state-size))
+  (-> (ByteBuffer/allocate resource-as-of-value-size)
       (.put ^bytes hash)
       (.putLong state)
       (.array)))
@@ -396,8 +411,18 @@
   (Arrays/copyOfRange v 0 hash-size))
 
 
+(defn resource-as-of-value->hash' [^ByteBuffer v]
+  (let [hash (byte-array hash-size)]
+    (.get v hash 0 hash-size)
+    hash))
+
+
 (defn resource-as-of-value->state [v]
   (.getLong (ByteBuffer/wrap v) hash-size))
+
+
+(defn resource-as-of-value->state' [^ByteBuffer v]
+  (.getLong v hash-size))
 
 
 

@@ -98,7 +98,10 @@
 
 
 (defn- resource-as-of-iter ^Closeable [snapshot]
-  (kv/new-iterator snapshot :resource-as-of-index))
+  (kv/new-value-buffer-iterator
+    (kv/new-iterator snapshot :resource-as-of-index)
+    codec/max-resource-as-of-key-size
+    codec/resource-as-of-value-size))
 
 
 (defn- verify-tx-cmds* [snapshot t tx-instant tx-cmds]

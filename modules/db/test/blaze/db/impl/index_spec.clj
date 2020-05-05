@@ -35,7 +35,7 @@
 
 
 (s/fdef index/hash-state-t
-  :args (s/cat :resource-as-of-iter :blaze.db/kv-iterator
+  :args (s/cat :resource-as-of-iter :blaze.db/kv-buffer-iterator
                :tid :blaze.db/tid
                :id :blaze.db/id-bytes
                :t :blaze.db/t)
