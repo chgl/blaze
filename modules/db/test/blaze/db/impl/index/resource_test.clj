@@ -1,8 +1,9 @@
-(ns blaze.db.impl.index-test
+(ns blaze.db.impl.index.resource-test
   (:require
     [blaze.db.impl.codec :as codec]
     [blaze.db.impl.codec-stub :as codec-stub]
     [blaze.db.impl.index :as index]
+    [blaze.db.impl.index.resource :as resource]
     [blaze.db.impl.index-spec]
     [blaze.db.kv :as kv]
     [blaze.db.kv.mem :refer [init-mem-kv-store]]
@@ -48,7 +49,7 @@
 
 
 (defn- mk-resource [context type id state t]
-  (index/mk-resource context type id (codec/hash {:resourceType type :id id}) state t))
+  (resource/mk-resource context type id (codec/hash {:resourceType type :id id}) state t))
 
 
 (deftest resource
@@ -80,7 +81,7 @@
           id "0"
           resource (mk-resource context "Patient" "0" (codec/state 1 :put) 0)]
       (kv/put kv-store (conj
-                         (index/tx-success-entries 0 (Instant/ofEpochSecond 194004))
+                         (codec/tx-success-entries 0 (Instant/ofEpochSecond 194004))
                          [:resource-index
                           (codec/hash {:resourceType type :id id})
                           (nippy/fast-freeze {:resourceType type :id id})]))
@@ -95,16 +96,16 @@
 
 
 (deftest tx
-  (st/unstrument `index/tx)
+  (st/unstrument `resource/tx)
   (codec-stub/t-key ::t ::t-key)
 
   (testing "existing transaction"
     (kv-stub/get ::kv-store :tx-success-index ::t-key #{::tx-bytes})
     (codec-stub/decode-tx ::tx-bytes ::t ::tx)
 
-    (is (= ::tx (index/tx ::kv-store ::t))))
+    (is (= ::tx (resource/tx ::kv-store ::t))))
 
   (testing "missing transaction"
     (kv-stub/get ::kv-store :tx-success-index ::t-key nil?)
 
-    (is (nil? (index/tx ::kv-store ::t)))))
+    (is (nil? (resource/tx ::kv-store ::t)))))

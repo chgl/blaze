@@ -1,5 +1,6 @@
 (ns blaze.db.kv.mem
   (:require
+    [blaze.db.impl.bytes :as bytes]
     [blaze.db.kv :as kv]
     [integrant.core :as ig]
     [taoensso.timbre :as log])
@@ -18,51 +19,56 @@
     (let [[x & xs] (subseq db >= k)]
       (some-> (reset! cursor {:first x :rest xs})
               :first
-              (key))))
+              (key)
+              (bytes/copy))))
 
   (-seek-for-prev [_ k]
     (when closed? (throw (Exception. "closed")))
     (let [[x & xs] (rsubseq db <= k)]
       (some-> (reset! cursor {:first x :rest xs})
               :first
-              (key))))
+              (key)
+              (bytes/copy))))
 
-  (seek-to-first [_]
+  (-seek-to-first [_]
     (when closed? (throw (Exception. "closed")))
     (some-> (reset! cursor {:first (first db) :rest (rest db)})
             :first
-            (key)))
+            (key)
+            (bytes/copy)))
 
   (seek-to-last [_]
     (when closed? (throw (Exception. "closed")))
     (some-> (reset! cursor {:first (last db) :rest nil})
             :first
-            (key)))
+            (key)
+            (bytes/copy)))
 
-  (next [_]
+  (-next [_]
     (when closed? (throw (Exception. "closed")))
     (some-> (swap! cursor (fn [{[x & xs] :rest}]
                             {:first x :rest xs}))
             :first
-            (key)))
+            (key)
+            (bytes/copy)))
 
-  (prev [this]
+  (-prev [this]
     (when closed? (throw (Exception. "closed")))
     (when-let [prev (first (rsubseq db < (key (:first @cursor))))]
-      (kv/seek this (key prev))))
+      (kv/seek! this (key prev))))
 
 
-  (valid [_]
+  (-valid? [_]
     (when closed? (throw (Exception. "closed")))
     (some? (:first @cursor)))
 
   (key [_]
     (when closed? (throw (Exception. "closed")))
-    (some-> @cursor :first key))
+    (some-> @cursor :first (key) (bytes/copy)))
 
-  (value [_]
+  (-value [_]
     (when closed? (throw (Exception. "closed")))
-    (some-> @cursor :first val))
+    (some-> @cursor :first (val) (bytes/copy)))
 
   Closeable
   (close [_]
@@ -85,58 +91,62 @@
       (throw (column-family-unknown column-family))))
 
   (snapshot-get [_ k]
-    (get-in db [:default k]))
+    (some-> (get-in db [:default k]) (bytes/copy)))
 
   (snapshot-get [_ column-family k]
-    (get-in db [column-family k]))
+    (some-> (get-in db [column-family k]) (bytes/copy)))
 
   Closeable
   (close [_]))
+
+
+(defn- assoc-copy [m ^bytes k ^bytes v]
+  (assoc m (bytes/copy k) (bytes/copy v)))
 
 
 (defn- put-entries [db entries]
   (reduce
     (fn [db [column-family k v]]
       (if (keyword? column-family)
-        (assoc-in db [column-family k] v)
-        (assoc-in db [:default column-family] k)))
+        (update db column-family assoc-copy k v)
+        (update db :default assoc-copy column-family k)))
     db
     entries))
 
 
-(defn- write-entries [db merge-ops entries]
+(defn- write-entries [db entries]
   (reduce
     (fn [db [op column-family k v]]
       (if (keyword? column-family)
         (case op
-          :put (assoc-in db [column-family k] v)
-          :merge (update-in db [column-family k] (get merge-ops column-family) v)
+          :put (update db column-family assoc-copy k v)
+          :merge (throw (UnsupportedOperationException. "merge is not supported"))
           :delete (update db column-family dissoc k))
         (case op
-          :put (assoc-in db [:default column-family] k)
-          :merge (throw (UnsupportedOperationException. "merge is not supported on default column family"))
+          :put (update db :default assoc-copy column-family k)
+          :merge (throw (UnsupportedOperationException. "merge is not supported"))
           :delete (update db :default dissoc column-family))))
     db
     entries))
 
 
-(deftype MemKvStore [db merge-ops]
+(deftype MemKvStore [db]
   kv/KvStore
   (new-snapshot [_]
     (->MemKvSnapshot @db))
 
   (get [_ k]
-    (get-in @db [:default k]))
+    (kv/snapshot-get (->MemKvSnapshot @db) k))
 
   (get [_ column-family k]
-    (get-in @db [column-family k]))
+    (kv/snapshot-get (->MemKvSnapshot @db) column-family k))
 
   (-put [_ entries]
     (swap! db put-entries entries)
     nil)
 
   (-put [_ k v]
-    (swap! db assoc-in [:default k] v)
+    (swap! db update :default assoc-copy k v)
     nil)
 
   (delete [_ ks]
@@ -144,7 +154,7 @@
     nil)
 
   (write [_ entries]
-    (swap! db write-entries merge-ops entries)
+    (swap! db write-entries entries)
     nil))
 
 
@@ -162,9 +172,7 @@
   ([]
    (init-mem-kv-store {}))
   ([column-families]
-   (->MemKvStore
-     (atom (init-db (conj (keys column-families) :default)))
-     column-families)))
+   (->MemKvStore (atom (init-db (conj (keys column-families) :default))))))
 
 
 (defmethod ig/init-key :blaze.db.kv/mem

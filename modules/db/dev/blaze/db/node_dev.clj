@@ -78,7 +78,7 @@
 
   (def i (kv/new-iterator (kv/new-snapshot kv-store) :type-as-of-index))
   (codec/type-as-of-key->t (kv/seek-to-first i))
-  (codec/type-as-of-key->t (kv/next i))
+  (codec/type-as-of-key->t (kv/next! i))
 
   (def i (kv/new-iterator (kv/new-snapshot kv-store) :type-stats-index))
   (vec (kv/seek-to-first i))

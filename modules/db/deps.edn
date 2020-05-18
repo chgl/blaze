@@ -1,7 +1,10 @@
 {:paths ["src" "resources"]
 
  :deps
- {blaze/executor
+ {blaze/coll
+  {:local/root "../coll"}
+
+  blaze/executor
   {:local/root "../executor"}
 
   blaze/fhir-path

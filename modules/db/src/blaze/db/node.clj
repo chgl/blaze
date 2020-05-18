@@ -7,6 +7,7 @@
     [blaze.db.impl.db :as db]
     [blaze.db.impl.index :as index]
     [blaze.db.impl.protocols :as p]
+    [blaze.db.impl.search-param :as search-param]
     [blaze.db.indexer :as indexer]
     [blaze.db.search-param-registry :as sr]
     [blaze.db.tx-log :as tx-log]
@@ -36,7 +37,7 @@
       (let [res (resolve-search-param search-param-registry type code)]
         (if (::anom/category res)
           (reduced res)
-          (conj ret [res values]))))
+          (conj ret [res (search-param/compile-values res values)]))))
     []
     clauses))
 
@@ -58,11 +59,11 @@
   p/QueryCompiler
   (-compile-type-query [_ type clauses]
     (when-ok [clauses (resolve-search-params search-param-registry type clauses)]
-      (batch-db/->TypeQuery (codec/tid type) clauses)))
+      (batch-db/->TypeQuery (codec/tid type) (seq clauses))))
 
   (-compile-compartment-query [_ code type clauses]
     (when-ok [clauses (resolve-search-params search-param-registry type clauses)]
-      (batch-db/->CompartmentQuery (codec/c-hash code) (codec/tid type) clauses))))
+      (batch-db/->CompartmentQuery (codec/c-hash code) (codec/tid type) (seq clauses)))))
 
 
 (defn resource-cache [kv-store max-size]

@@ -235,15 +235,3 @@
   ^Closeable
   [db]
   (p/-new-batch-db db))
-
-
-(defn ri-first
-  "Like `first` but for reducible collections."
-  [coll]
-  (reduce (fn [_ x] (reduced x)) nil coll))
-
-
-(defn ri-empty?
-  "Like `empty?` but for reducible collections."
-  [coll]
-  (nil? (ri-first coll)))

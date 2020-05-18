@@ -4,7 +4,6 @@
     [blaze.db.indexer.tx-spec]
     [blaze.db.impl.bytes :as bytes]
     [blaze.db.impl.codec :as codec]
-    [blaze.db.impl.index :as index]
     [blaze.db.kv :as kv]
     [blaze.db.kv.mem :refer [init-mem-kv-store]]
     [clojure.spec.test.alpha :as st]
@@ -79,7 +78,7 @@
         empty-store 1 now
         [[:put "Patient" "0" (codec/hash patient-0)]])
       (into
-        (index/tx-success-entries 1 now)
+        (codec/tx-success-entries 1 now)
         [[:resource-as-of-index
           (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 1)
           (codec/resource-as-of-value (codec/hash patient-0) (codec/state 1 :put))]
@@ -102,7 +101,7 @@
         store-patient-0 2 now
         [[:put "Patient" "0" (codec/hash patient-0-v2)]])
       (into
-        (index/tx-success-entries 2 now)
+        (codec/tx-success-entries 2 now)
         [[:resource-as-of-index
           (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 2)
           (codec/resource-as-of-value (codec/hash patient-0-v2) (codec/state 2 :put))]
@@ -125,7 +124,7 @@
         store-patient-0 2 now
         [[:put "Patient" "0" (codec/hash patient-0-v2) 1]])
       (into
-        (index/tx-success-entries 2 now)
+        (codec/tx-success-entries 2 now)
         [[:resource-as-of-index
           (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 2)
           (codec/resource-as-of-value (codec/hash patient-0-v2) (codec/state 2 :put))]
@@ -142,20 +141,13 @@
           (codec/system-stats-key 2)
           (codec/system-stats-value 1 2)]])))
 
-  (testing "adding a second, identical version of a patient results in a no-op with only the transaction itself recorded"
-    (is-entries=
-      (tx/verify-tx-cmds
-        store-patient-0 2 now
-        [[:put "Patient" "0" (codec/hash patient-0)]])
-      (index/tx-success-entries 2 now)))
-
   (testing "deleting the existing patient"
     (is-entries=
       (tx/verify-tx-cmds
         store-patient-0 2 now
         [[:delete "Patient" "0" (codec/hash (codec/deleted-resource "Patient" "0"))]])
       (into
-        (index/tx-success-entries 2 now)
+        (codec/tx-success-entries 2 now)
         [[:resource-as-of-index
           (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 2)
           (codec/resource-as-of-value (codec/hash (codec/deleted-resource "Patient" "0"))
@@ -179,7 +171,7 @@
         store-patient-0 2 now
         [[:put "Patient" "1" (codec/hash patient-1)]])
       (into
-        (index/tx-success-entries 2 now)
+        (codec/tx-success-entries 2 now)
         [[:resource-as-of-index
           (codec/resource-as-of-key tid-patient (codec/id-bytes "1") 2)
           (codec/resource-as-of-value (codec/hash patient-1) (codec/state 1 :put))]
@@ -201,7 +193,7 @@
       (tx/verify-tx-cmds
         store-patient-0 2 now
         [[:put "Patient" "0" (codec/hash patient-1) 0]])
-      (index/tx-error-entries
+      (codec/tx-error-entries
         2
         {::anom/category ::anom/conflict
          ::anom/message (format "put mismatch for %s/%s" "Patient" "0")}))))

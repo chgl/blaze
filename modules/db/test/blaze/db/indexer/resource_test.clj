@@ -319,7 +319,7 @@
           (codec/search-param-value-key
             (codec/c-hash "value-quantity")
             (codec/tid "Observation")
-            (codec/quantity 23.42M "")
+            (codec/quantity 23.42M)
             (codec/id-bytes "id-192702")
             hash))))
 

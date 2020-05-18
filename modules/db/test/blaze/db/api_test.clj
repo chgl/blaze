@@ -1,13 +1,14 @@
 (ns blaze.db.api-test
   (:require
+    [blaze.coll.core :as coll]
     [blaze.db.api :as d]
     [blaze.db.api-spec]
-    [blaze.db.kv.mem :refer [init-mem-kv-store]]
-    [blaze.db.search-param-registry :as sr]
     [blaze.db.indexer.resource :refer [init-resource-indexer]]
     [blaze.db.indexer.tx :refer [init-tx-indexer]]
+    [blaze.db.kv.mem :refer [init-mem-kv-store]]
     [blaze.db.node :as node :refer [init-node]]
     [blaze.db.node-spec]
+    [blaze.db.search-param-registry :as sr]
     [blaze.db.tx-log.local :refer [init-local-tx-log]]
     [blaze.db.tx-log.local-spec]
     [blaze.db.tx-log-spec]
@@ -141,7 +142,7 @@
 
 (deftest list-resources
   (testing "a new node has a empty list of resources"
-    (is (d/ri-empty? (d/list-resources (d/db (new-node)) "Patient"))))
+    (is (coll/empty? (d/list-resources (d/db (new-node)) "Patient"))))
 
   (testing "a node contains one resource after a put transaction"
     (let [node (new-node)]
@@ -167,7 +168,7 @@
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
       @(d/submit-tx node [[:delete "Patient" "0"]])
-      (is (d/ri-empty? (d/list-resources (d/db node) "Patient")))))
+      (is (coll/empty? (d/list-resources (d/db node) "Patient")))))
 
   (testing "a resource submitted after getting the db does not show up"
     (let [node (new-node)]
@@ -221,14 +222,14 @@
 (deftest list-compartment-resources
   (testing "a new node has a empty list of resources in the Patient/0 compartment"
     (let [db (d/db (new-node))]
-      (is (d/ri-empty? (d/list-compartment-resources db "Patient" "0" "Observation")))))
+      (is (coll/empty? (d/list-compartment-resources db "Patient" "0" "Observation")))))
 
   (testing "a node contains one Observation in the Patient/0 compartment"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
       @(d/submit-tx node [[:put {:resourceType "Observation" :id "0"
                                  :subject {:reference "Patient/0"}}]])
-      (given (d/ri-first (d/list-compartment-resources (d/db node) "Patient" "0" "Observation"))
+      (given (coll/first (d/list-compartment-resources (d/db node) "Patient" "0" "Observation"))
         :resourceType := "Observation"
         :id := "0"
         [:meta :versionId] := "2")))
@@ -254,7 +255,7 @@
       @(d/submit-tx node [[:put {:resourceType "Observation" :id "0"
                                  :subject {:reference "Patient/0"}}]])
       @(d/submit-tx node [[:delete "Observation" "0"]])
-      (is (d/ri-empty? (d/list-compartment-resources (d/db node) "Patient" "0" "Observation")))))
+      (is (coll/empty? (d/list-compartment-resources (d/db node) "Patient" "0" "Observation")))))
 
   (testing "it is possible to start at a later id"
     (let [node (new-node)]
@@ -276,18 +277,18 @@
         2 := nil)))
 
   (testing "Unknown compartment is not a problem"
-    (is (d/ri-empty? (d/list-compartment-resources (d/db (new-node)) "foo" "bar" "Condition")))))
+    (is (coll/empty? (d/list-compartment-resources (d/db (new-node)) "foo" "bar" "Condition")))))
 
 
 (deftest type-query
   (testing "a new node has a empty list of resources"
     (let [db (d/db (new-node))]
-      (is (d/ri-empty? (d/type-query db "Patient" [["gender" "male"]])))))
+      (is (coll/empty? (d/type-query db "Patient" [["gender" "male"]])))))
 
   (testing "finds the patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :gender "male"}]])
-      (given (d/ri-first (d/type-query (d/db node) "Patient" [["gender" "male"]]))
+      (given (coll/first (d/type-query (d/db node) "Patient" [["gender" "male"]]))
         :resourceType := "Patient"
         :id := "0")))
 
@@ -677,44 +678,83 @@
       (testing "patient"
         (given (into [] (d/type-query (d/db node) "Condition" [["patient" "id-0"]]))
           [0 :id] := "id-0"
-          1 := nil)))))
+          1 := nil))))
+
+  (testing "Observation"
+    (let [node (new-node)]
+      @(d/submit-tx
+         node
+         [[:put {:resourceType "Observation"
+                 :id "id-0"
+                 :valueQuantity
+                 {:code "kg/m2"
+                  :unit "kg/m²"
+                  :system "http://unitsofmeasure.org"
+                  :value 23.42M}}]])
+
+      (testing "without unit"
+        (let [clauses [["value-quantity" "23.42"]]]
+          (given (into [] (d/type-query (d/db node) "Observation" clauses))
+            [0 :id] := "id-0"
+            1 := nil)))
+
+      (testing "with minimal unit"
+        (let [clauses [["value-quantity" "23.42|kg/m2"]]]
+          (given (into [] (d/type-query (d/db node) "Observation" clauses))
+            [0 :id] := "id-0"
+            1 := nil)))
+
+      (testing "with human unit"
+        (let [clauses [["value-quantity" "23.42|kg/m²"]]]
+          (given (into [] (d/type-query (d/db node) "Observation" clauses))
+            [0 :id] := "id-0"
+            1 := nil)))
+
+      (testing "with full unit"
+        (let [clauses [["value-quantity" "23.42|http://unitsofmeasure.org|kg/m2"]]]
+          (given (into [] (d/type-query (d/db node) "Observation" clauses))
+            [0 :id] := "id-0"
+            1 := nil))))))
 
 
 (deftest compartment-query
   (testing "a new node has a empty list of resources in the Patient/0 compartment"
     (let [db (d/db (new-node))]
-      (is (d/ri-empty? (d/compartment-query db "Patient" "0" "Observation" [["code" "foo"]])))))
+      (is (coll/empty? (d/compartment-query db "Patient" "0" "Observation" [["code" "foo"]])))))
 
   (testing "returns the Observation in the Patient/0 compartment"
     (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      @(d/submit-tx node [[:put {:resourceType "Observation" :id "0"
-                                 :subject {:reference "Patient/0"}
-                                 :code
-                                 {:coding
-                                  [{:system "system-191514"
-                                    :code "code-191518"}]}}]])
-      (given (d/ri-first (d/compartment-query
+      @(d/submit-tx
+         node
+         [[:put {:resourceType "Patient" :id "0"}]
+          [:put {:resourceType "Observation" :id "0"
+                 :subject {:reference "Patient/0"}
+                 :code
+                 {:coding
+                  [{:system "system-191514"
+                    :code "code-191518"}]}}]])
+      (given (coll/first (d/compartment-query
                            (d/db node) "Patient" "0" "Observation"
                            [["code" "system-191514|code-191518"]]))
         :resourceType := "Observation"
         :id := "0")))
 
   (testing "returns only the matching Observation in the Patient/0 compartment"
-    (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      @(d/submit-tx node [[:put {:resourceType "Observation" :id "0"
-                                 :subject {:reference "Patient/0"}
-                                 :code
-                                 {:coding
-                                  [{:system "system"
-                                    :code "code-1"}]}}]
-                          [:put {:resourceType "Observation" :id "1"
-                                 :subject {:reference "Patient/0"}
-                                 :code
-                                 {:coding
-                                  [{:system "system"
-                                    :code "code-2"}]}}]])
+    (let [observation
+          (fn [id code]
+            {:resourceType "Observation" :id id
+             :subject {:reference "Patient/0"}
+             :code
+             {:coding
+              [{:system "system"
+                :code code}]}})
+          node (new-node)]
+      @(d/submit-tx
+         node
+         [[:put {:resourceType "Patient" :id "0"}]
+          [:put (observation "0" "code-1")]
+          [:put (observation "1" "code-2")]
+          [:put (observation "2" "code-3")]])
       (given (into [] (d/compartment-query
                         (d/db node) "Patient" "0" "Observation"
                         [["code" "system|code-2"]]))
@@ -722,20 +762,122 @@
         [0 :id] := "1"
         1 := nil)))
 
-  (testing "returns the Observation in the Patient/0 compartment on the second criteria"
+  (testing "returns only the matching versions"
+    (let [observation
+          (fn [id code]
+            {:resourceType "Observation" :id id
+             :subject {:reference "Patient/0"}
+             :code
+             {:coding
+              [{:system "system"
+                :code code}]}})
+          node (new-node)]
+      @(d/submit-tx
+         node
+         [[:put {:resourceType "Patient" :id "0"}]
+          [:put (observation "0" "code-1")]
+          [:put (observation "1" "code-2")]
+          [:put (observation "2" "code-2")]
+          [:put (observation "3" "code-2")]])
+      @(d/submit-tx
+         node
+         [[:put (observation "0" "code-2")]
+          [:put (observation "1" "code-1")]
+          [:put (observation "3" "code-2")]])
+      (given (into [] (d/compartment-query
+                        (d/db node) "Patient" "0" "Observation"
+                        [["code" "system|code-2"]]))
+        [0 :resourceType] := "Observation"
+        [0 :id] := "0"
+        [0 :meta :versionId] := "2"
+        [1 :resourceType] := "Observation"
+        [1 :id] := "2"
+        [1 :meta :versionId] := "1"
+        [2 :id] := "3"
+        [2 :meta :versionId] := "2"
+        3 := nil)))
+
+  (testing "doesn't return deleted resources"
     (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      @(d/submit-tx node [[:put {:resourceType "Observation" :id "0"
-                                 :subject {:reference "Patient/0"}
-                                 :code
-                                 {:coding
-                                  [{:system "system-191514"
-                                    :code "code-191518"}]}}]])
-      (given (d/ri-first (d/compartment-query
+      @(d/submit-tx
+         node
+         [[:put {:resourceType "Patient" :id "0"}]
+          [:put {:resourceType "Observation" :id "0"
+                 :subject {:reference "Patient/0"}
+                 :code
+                 {:coding
+                  [{:system "system"
+                    :code "code"}]}}]])
+      @(d/submit-tx
+         node
+         [[:delete "Observation" "0"]])
+      (is (coll/empty? (d/compartment-query
+                        (d/db node) "Patient" "0" "Observation"
+                        [["code" "system|code"]])))))
+
+  (testing "finds resources after deleted ones"
+    (let [observation
+          (fn [id code]
+            {:resourceType "Observation" :id id
+             :subject {:reference "Patient/0"}
+             :code
+             {:coding
+              [{:system "system"
+                :code code}]}})
+          node (new-node)]
+      @(d/submit-tx
+         node
+         [[:put {:resourceType "Patient" :id "0"}]
+          [:put (observation "0" "code")]
+          [:put (observation "1" "code")]])
+      @(d/submit-tx
+         node
+         [[:delete "Observation" "0"]])
+      (given (into [] (d/compartment-query
+                        (d/db node) "Patient" "0" "Observation"
+                        [["code" "system|code"]]))
+        [0 :resourceType] := "Observation"
+        [0 :id] := "1"
+        1 := nil)))
+
+  (testing "returns the Observation in the Patient/0 compartment on the second criteria value"
+    (let [node (new-node)]
+      @(d/submit-tx
+         node
+         [[:put {:resourceType "Patient" :id "0"}]
+          [:put {:resourceType "Observation" :id "0"
+                 :subject {:reference "Patient/0"}
+                 :code
+                 {:coding
+                  [{:system "system-191514"
+                    :code "code-191518"}]}}]])
+      (given (coll/first (d/compartment-query
                            (d/db node) "Patient" "0" "Observation"
                            [["code" "foo|bar" "system-191514|code-191518"]]))
         :resourceType := "Observation"
         :id := "0")))
+
+  (testing "returns nothing because of non-matching second criteria"
+    (let [node (new-node)]
+      @(d/submit-tx
+         node
+         [[:put {:resourceType "Patient" :id "0"}]
+          [:put {:resourceType "Observation" :id "0"
+                 :subject {:reference "Patient/0"}
+                 :code
+                 {:coding
+                  [{:system "system-191514"
+                    :code "code-191518"}]}
+                 :valueQuantity
+                 {:code "kg/m2"
+                  :unit "kg/m²"
+                  :system "http://unitsofmeasure.org"
+                  :value 42M}}]])
+      (is (coll/empty?
+            (d/compartment-query
+              (d/db node) "Patient" "0" "Observation"
+              [["code" "system-191514|code-191518"]
+               ["value-quantity" "23"]])))))
 
   (testing "returns an anomaly on unknown search param code"
     (given (d/compartment-query (d/db (new-node)) "Patient" "0" "Observation"
@@ -744,7 +886,7 @@
 
   (testing "Unknown compartment is not a problem"
     (let [node (new-node)]
-      (is (d/ri-empty? (d/compartment-query (d/db node) "foo" "bar" "Condition" [["code" "baz"]])))))
+      (is (coll/empty? (d/compartment-query (d/db node) "foo" "bar" "Condition" [["code" "baz"]])))))
 
   (testing "Unknown type is not a problem"
     (let [node (new-node)]
@@ -790,7 +932,7 @@
 (deftest instance-history
   (testing "a new node has a empty instance history"
     (let [db (d/db (new-node))]
-      (is (d/ri-empty? (d/instance-history db "Patient" "0" nil nil)))
+      (is (coll/empty? (d/instance-history db "Patient" "0" nil nil)))
       (is (zero? (d/total-num-of-instance-changes db "Patient" "0" nil)))))
 
   (testing "a node with one resource shows it in the instance history"
@@ -825,7 +967,7 @@
 (deftest type-history
   (testing "a new node has a empty type history"
     (let [db (d/db (new-node))]
-      (is (d/ri-empty? (d/type-history db "Patient" nil nil nil)))
+      (is (coll/empty? (d/type-history db "Patient" nil nil nil)))
       (is (zero? (d/total-num-of-type-changes db "Patient")))))
 
   (testing "a node with one resource shows it in the type history"
@@ -873,7 +1015,7 @@
 (deftest system-history
   (testing "a new node has a empty system history"
     (let [db (d/db (new-node))]
-      (is (d/ri-empty? (d/system-history db nil nil nil nil)))
+      (is (coll/empty? (d/system-history db nil nil nil nil)))
       (is (zero? (d/total-num-of-system-changes db nil)))))
 
   (testing "a node with one resource shows it in the system history"
@@ -937,24 +1079,24 @@
 
 (deftest ri-first
   (testing "nil"
-    (is (nil? (d/ri-first nil))))
+    (is (nil? (coll/first nil))))
 
   (testing "empty vector"
-    (is (nil? (d/ri-first []))))
+    (is (nil? (coll/first []))))
 
   (testing "vector with one element"
-    (is (= 1 (d/ri-first [1]))))
+    (is (= 1 (coll/first [1]))))
 
   (testing "vector with two elements"
-    (is (= 1 (d/ri-first [1 2])))))
+    (is (= 1 (coll/first [1 2])))))
 
 
 (deftest ri-empty
   (testing "nil"
-    (is (true? (d/ri-empty? nil))))
+    (is (true? (coll/empty? nil))))
 
   (testing "empty vector"
-    (is (true? (d/ri-empty? []))))
+    (is (true? (coll/empty? []))))
 
   (testing "vector with one element"
-    (is (false? (d/ri-empty? [1])))))
+    (is (false? (coll/empty? [1])))))

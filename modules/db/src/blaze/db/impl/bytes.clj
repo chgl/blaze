@@ -13,8 +13,13 @@
   (Arrays/equals a b))
 
 
-(defn prefix= [^bytes a ^bytes b ^long size]
-  (Arrays/equals a 0 size b 0 size))
+(defn starts-with?
+  {:arglists '([bs prefix] [bs prefix prefix-length])}
+  ([^bytes bs ^bytes prefix]
+   (and (clojure.core/<= (alength prefix) (alength bs))
+        (starts-with? bs prefix (alength prefix))))
+  ([^bytes bs ^bytes prefix ^long prefix-length]
+   (Arrays/equals bs 0 prefix-length prefix 0 prefix-length)))
 
 
 (defn < [^bytes a ^bytes b]
@@ -25,10 +30,6 @@
   (clojure.core/<= (Arrays/compareUnsigned a b) 0))
 
 
-(defn starts-with? [^bytes b ^bytes sub]
-  (Arrays/equals b 0 (alength sub) sub 0 (alength sub)))
-
-
 (def empty (byte-array 0))
 
 
@@ -36,3 +37,7 @@
   (if (seq byte-arrays)
     (Bytes/concat (into-array byte-arrays))
     empty))
+
+
+(defn copy [^bytes bs]
+  (Arrays/copyOf bs (alength bs)))

@@ -37,7 +37,7 @@
     (.seekForPrev i ^bytes target)
     (iterator->key i))
 
-  (seek-to-first [_]
+  (-seek-to-first [_]
     (.seekToFirst i)
     (iterator->key i))
 
@@ -45,15 +45,18 @@
     (.seekToLast i)
     (iterator->key i))
 
-  (next [_]
+  (-next [_]
     (.next i)
     (iterator->key i))
 
-  (prev [_]
+  (-prev [_]
     (.prev i)
     (iterator->key i))
 
-  (value [_]
+  (-valid? [_]
+    (.isValid i))
+
+  (-value [_]
     (.value i))
 
   Closeable

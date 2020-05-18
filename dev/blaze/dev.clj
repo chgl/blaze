@@ -44,6 +44,29 @@
   (st/unstrument)
   )
 
+;; Specimen
+;; 21% patient resource seek
+;; 16% compartment seek
+;; 12% compartment next
+;; 10% observation resource seek
+;; 18% O.value.coding contains Code 'LA15920-4' from loinc
+;; -----
+;; 77 %
+
+;; Patient
+;; 16% compartment seek
+;;  4% compartment next
+;; 14% observation resource seek
+;; 11% (O.value as Quantity) > 30 'kg/m2'
+;; -----
+;; 43%
+
+;; seek 43%
+;; key   6%
+;; next  3%
+;; value 2%
+;; --------
+;;      54%
 
 (comment
   (def node (:blaze.db/node system))

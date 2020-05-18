@@ -1,6 +1,6 @@
 (ns blaze.db.kv
   "Protocols for key-value store backend implementations."
-  (:refer-clojure :exclude [get key next]))
+  (:refer-clojure :exclude [get key]))
 
 
 (defprotocol KvIterator
@@ -10,35 +10,25 @@
 
   (-seek-for-prev [iter target])
 
-  (seek-to-first [iter])
+  (-seek-to-first [iter])
 
   (seek-to-last [iter])
 
-  (next [iter]
-    "Moves this iterator to the next entry and returns the key of the entry if
-    there is one.
+  (-next [iter])
 
-    Must not be called if a previous operation returned nil.")
+  (-prev [iter])
 
-  (prev [iter]
-    "Moves this iterator to the previous entry and returns the key of the entry
-    if there is one.
+  (-valid? [iter])
 
-    Must not be called if a previous operation returned nil.")
+  (key [iter])
 
-  (valid [iter]
-    "")
-
-  (key [iter]
-    "")
-
-  (value [iter]
+  (-value [iter]
     "Returns the value of the current entry of this iterator.
 
     Must not be called if a previous operation returned nil."))
 
 
-(defn seek
+(defn seek!
   "Positions this iterator at the first entry whose key is at or past `target`
   and returns the key of the entry if there is one.
 
@@ -49,7 +39,7 @@
   (-seek iter target))
 
 
-(defn seek-for-prev
+(defn seek-for-prev!
   "Positions this iterator at the first entry whose key is at or before `target`
   and returns the key of the entry if there is one.
 
@@ -58,6 +48,43 @@
   Must not be called if a previous operation returned nil."
   [iter target]
   (-seek-for-prev iter target))
+
+
+(defn seek-to-first!
+  "Positions `iter` at the first entry in the source and returns the key of the
+  entry if the source is not empty."
+  [iter]
+  (-seek-to-first iter))
+
+
+(defn next!
+  "Moves this iterator to the next entry and returns the key of the entry if
+  there is one.
+
+  Must not be called if a previous operation returned nil."
+  [iter]
+  (-next iter))
+
+
+(defn prev!
+  "Moves this iterator to the previous entry and returns the key of the entry
+  if there is one.
+
+  Must not be called if a previous operation returned nil."
+  [iter]
+  (-prev iter))
+
+
+(defn valid? [iter]
+  (-valid? iter))
+
+
+(defn value
+  "Returns the value of the current entry of this iterator.
+
+  Must not be called if a previous operation returned nil."
+  [iter]
+  (-value iter))
 
 
 (defprotocol KvSnapshot

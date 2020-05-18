@@ -9,7 +9,8 @@
     [clojure.spec.alpha :as s]
     [clojure.spec.gen.alpha :as gen]
     [clojure.test.check]
-    [clojure.test.check.generators :as gen2])
+    [clojure.test.check.generators :as gen2]
+    [cognitect.anomalies :as anom])
   (:import
     [java.time ZoneId]))
 
@@ -414,7 +415,7 @@
 
 
 (s/fdef codec/quantity
-  :args (s/cat :value number? :unit string?)
+  :args (s/cat :value number? :unit (s/? (s/nilable string?)))
   :ret bytes?)
 
 
@@ -437,3 +438,11 @@
 (s/fdef codec/decode-tx
   :args (s/cat :bs bytes? :t :blaze.db/t)
   :ret :blaze.db/tx)
+
+
+(s/fdef codec/tx-success-entries
+  :args (s/cat :t :blaze.db/t :tx-instant inst?))
+
+
+(s/fdef codec/tx-error-entries
+  :args (s/cat :t :blaze.db/t :anomaly ::anom/anomaly))

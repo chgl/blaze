@@ -7,9 +7,7 @@
     [blaze.fhir.spec]
     [clojure.spec.alpha :as s]
     [cognitect.anomalies :as anom]
-    [manifold.deferred :refer [deferred?]])
-  (:import
-    [clojure.lang IReduceInit]))
+    [manifold.deferred :refer [deferred?]]))
 
 
 (s/def :blaze.db/op
@@ -213,8 +211,3 @@
 (s/fdef d/total-num-of-system-changes
   :args (s/cat :db :blaze.db/db :since (s/nilable inst?))
   :ret nat-int?)
-
-
-(s/fdef d/ri-first
-  :args (s/cat :coll (s/nilable #(instance? IReduceInit %)))
-  :ret any?)

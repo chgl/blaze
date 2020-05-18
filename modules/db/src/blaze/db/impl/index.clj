@@ -1,17 +1,20 @@
 (ns blaze.db.impl.index
   (:require
+    [blaze.coll.core :as coll]
     [blaze.db.impl.bytes :as bytes]
     [blaze.db.impl.codec :as codec]
+    [blaze.db.impl.index.compartment-query :as cq]
+    [blaze.db.impl.index.type-query :as tq]
+    [blaze.db.impl.index.resource :as resource :refer [mk-resource]]
     [blaze.db.impl.search-param :as search-param]
     [blaze.db.kv :as kv]
     [blaze.fhir.util :as fhir-util]
     [taoensso.nippy :as nippy])
   (:import
-    [clojure.lang IMeta IPersistentMap IReduceInit]
-    [com.github.benmanes.caffeine.cache LoadingCache]
-    [java.io Closeable Writer]
-    [java.util Arrays HashMap Map])
-  (:refer-clojure :exclude [hash]))
+    [blaze.db.impl.index.resource Hash Resource]
+    [clojure.lang IReduceInit]
+    [java.io Closeable]
+    [java.util Arrays HashMap Map]))
 
 
 (set! *warn-on-reflection* true)
@@ -29,140 +32,12 @@
   (.get type-reg tid))
 
 
-;; Used as cache key. Implements equals on top of the byte array of a hash.
-(deftype Hash [hash]
-  Object
-  (equals [this other]
-    (if (identical? this other)
-      true
-      (if (or (nil? other) (not= Hash (class other)))
-        false
-        (bytes/= hash (.hash ^Hash other)))))
-  (hashCode [_]
-    (Arrays/hashCode ^bytes hash)))
-
-
 (defn tx [kv-store t]
-  (when-let [v (kv/get kv-store :tx-success-index (codec/t-key t))]
-    (codec/decode-tx v t)))
+  (resource/tx kv-store t))
 
 
 (defn load-resource-content [kv-store ^Hash hash]
   (some-> (kv/get kv-store :resource-index (.hash hash)) (nippy/fast-thaw)))
-
-
-(defn- enhance-content [content t]
-  (update content :meta assoc :versionId (str t)))
-
-
-(deftype ResourceMeta [kv-store type state t ^:volatile-mutable tx]
-  IPersistentMap
-  (valAt [this key]
-    (.valAt this key nil))
-  (valAt [_ key not-found]
-    (case key
-      :type type
-      :blaze.db/t t
-      :blaze.db/num-changes (codec/state->num-changes state)
-      :blaze.db/op (codec/state->op state)
-      :blaze.db/tx
-      (if tx
-        tx
-        (do (set! tx (blaze.db.impl.index/tx kv-store t))
-            tx))
-      not-found))
-  (count [_] 5))
-
-
-(defn mk-meta [kv-store type state t]
-  (ResourceMeta. kv-store (keyword "fhir" type) state t nil))
-
-
-(deftype Resource
-  [kv-store ^LoadingCache cache type id hash ^long state ^long t
-   ^:volatile-mutable ^IPersistentMap content ^:volatile-mutable meta]
-
-  IPersistentMap
-  (containsKey [_ key]
-    (case key
-      :id true
-      :resourceType true
-      (if content
-        (.containsKey content key)
-        (do (set! content (enhance-content (.get cache hash) t))
-            (.containsKey content key)))))
-  (seq [_]
-    (if content
-      (.seq content)
-      (do (set! content (enhance-content (.get cache hash) t))
-          (.seq content))))
-  (valAt [_ key]
-    (case key
-      :id id
-      :resourceType type
-      (if content
-        (.valAt content key)
-        (do (set! content (enhance-content (.get cache hash) t))
-            (.valAt content key)))))
-  (valAt [_ key not-found]
-    (case key
-      :id id
-      :resourceType type
-      (if content
-        (.valAt content key not-found)
-        (do (set! content (enhance-content (.get cache hash) t))
-            (.valAt content key not-found)))))
-  (count [_]
-    (if content
-      (count content)
-      (do (set! content (enhance-content (.get cache hash) t))
-          (count content))))
-
-  IMeta
-  (meta [_]
-    (if meta
-      meta
-      (do (set! meta (mk-meta kv-store type state t))
-          meta)))
-
-  Object
-  (equals [this other]
-    (if (identical? this other)
-      true
-      (if (or (nil? other) (not= Resource (class other)))
-        false
-        (and (= hash (.hash ^Resource other))
-             (= t (.t ^Resource other))))))
-  (hashCode [_]
-    (-> (unchecked-multiply-int 31 (.hashCode hash))
-        (unchecked-add-int t))))
-
-
-(defn- hash [^Resource resource]
-  (.hash ^Hash (.hash resource)))
-
-
-(defmethod print-method Resource [^Resource resource ^Writer w]
-  (.write w (format "Resource[id=%s, hash=%s, state=%d/%s, t=%d]"
-                    (.id resource)
-                    (codec/hex (hash resource))
-                    (codec/state->num-changes (.state resource))
-                    (name (codec/state->op (.state resource)))
-                    (.t resource))))
-
-
-(defn mk-resource
-  [{:blaze.db/keys [kv-store resource-cache]} type id hash state t]
-  (Resource. kv-store resource-cache type id (Hash. hash) state t nil nil))
-
-
-(defn tx-success-entries [t tx-instant]
-  [[:tx-success-index (codec/t-key t) (codec/encode-tx {:blaze.db.tx/instant tx-instant})]
-   [:t-by-instant-index (codec/tx-by-instant-key tx-instant) (codec/encode-t t)]])
-
-
-(defn tx-error-entries [t anom]
-  [[:tx-error-index (codec/t-key t) (nippy/fast-freeze anom)]])
 
 
 (defn- resource*** [context k v]
@@ -177,7 +52,7 @@
 
 (defn- resource**
   [context resource-as-of-iter target]
-  (when-let [k (kv/seek resource-as-of-iter target)]
+  (when-let [k (kv/seek! resource-as-of-iter target)]
     ;; we have to check that we are still on target, because otherwise we would
     ;; find the next resource
     (when (codec/bytes-eq-without-t target k)
@@ -195,7 +70,7 @@
 
 
 (defn- hash-state-t* [resource-as-of-iter target]
-  (when-let [k (kv/seek resource-as-of-iter target)]
+  (when-let [k (kv/seek! resource-as-of-iter target)]
     ;; we have to check that we are still on target, because otherwise we would
     ;; find the next resource
     (when (codec/bytes-eq-without-t target k)
@@ -221,7 +96,7 @@
 
 (defn- resource-t**
   [resource-as-of-iter target]
-  (when-let [k (kv/seek resource-as-of-iter target)]
+  (when-let [k (kv/seek! resource-as-of-iter target)]
     ;; we have to check that we are still on target, because otherwise we would
     ;; find the next resource
     (when (codec/bytes-eq-without-t target k)
@@ -234,7 +109,7 @@
 
 (defn resource-state*
   [resource-as-of-iter target]
-  (when-let [k (kv/seek resource-as-of-iter target)]
+  (when-let [k (kv/seek! resource-as-of-iter target)]
     ;; we have to check that we are still on target, because otherwise we would
     ;; find the next resource
     (when (codec/bytes-eq-without-t target k)
@@ -243,7 +118,7 @@
 
 (defn- t-by-instant*
   [t-by-instant-iter instant]
-  (when (kv/seek t-by-instant-iter (codec/tx-by-instant-key instant))
+  (when (kv/seek! t-by-instant-iter (codec/tx-by-instant-key instant))
     (codec/decode-t (kv/value t-by-instant-iter))))
 
 
@@ -273,7 +148,7 @@
 
 
 (defn type-stats [i tid t]
-  (when-let [k (kv/seek i (codec/type-stats-key tid t))]
+  (when-let [k (kv/seek! i (codec/type-stats-key tid t))]
     (when (= tid (codec/type-stats-key->tid k))
       (kv/value i))))
 
@@ -299,7 +174,7 @@
 
 
 (defn system-stats [i t]
-  (when (kv/seek i (codec/system-stats-key t))
+  (when (kv/seek! i (codec/system-stats-key t))
     (kv/value i)))
 
 
@@ -329,14 +204,14 @@
   (loop [k start-k]
     (when (and k (codec/bytes-eq-without-t k start-k))
       (if (< t ^long (codec/resource-as-of-key->t k))
-        (recur (kv/next iter))
+        (recur (kv/next! iter))
         k))))
 
 
 (defn- type-list-seek [iter tid start-id t]
   (if start-id
-    (kv/seek iter (codec/resource-as-of-key tid start-id t))
-    (type-list-move-to-t iter (kv/seek iter (codec/resource-as-of-key tid)) t)))
+    (kv/seek! iter (codec/resource-as-of-key tid start-id t))
+    (type-list-move-to-t iter (kv/seek! iter (codec/resource-as-of-key tid)) t)))
 
 
 (defn- resource-as-of-key-id= [^bytes k ^bytes start-k]
@@ -345,10 +220,10 @@
 
 
 (defn- type-list-next [iter ^bytes start-k ^long t]
-  (loop [k (kv/next iter)]
-    (when (and k (bytes/prefix= k start-k codec/tid-size))
+  (loop [k (kv/next! iter)]
+    (when (some-> k (bytes/starts-with? start-k codec/tid-size))
       (if (resource-as-of-key-id= k start-k)
-        (recur (kv/next iter))
+        (recur (kv/next! iter))
         (type-list-move-to-t iter k t)))))
 
 
@@ -366,7 +241,7 @@
                     iter (resource-as-of-iter snapshot)]
           (loop [ret init
                  k (type-list-seek iter tid start-id t)]
-            (if (and k (bytes/prefix= key-prefix k codec/tid-size))
+            (if (some-> k (bytes/starts-with? key-prefix codec/tid-size))
               (let [resource (resource*** context k (kv/value iter))]
                 (if-not (deleted? resource)
                   (let [ret (rf ret resource)]
@@ -385,11 +260,6 @@
 
 (defn- compartment-list-cmp-key [{:keys [c-hash res-id]} tid]
   (codec/compartment-resource-type-key c-hash res-id tid))
-
-
-(defn- key-valid? [^bytes start-key ^bytes key]
-  (and (<= (alength start-key) (alength key))
-       (bytes/prefix= start-key key (alength start-key))))
 
 
 (defn compartment-list
@@ -412,15 +282,15 @@
                     iter (kv/new-iterator snapshot :compartment-resource-type-index)
                     raoi (resource-as-of-iter snapshot)]
           (loop [ret init
-                 k (kv/seek iter start-key)]
-            (if (and k (key-valid? cmp-key k))
+                 k (kv/seek! iter start-key)]
+            (if (some-> k (bytes/starts-with? cmp-key))
               (if-let [val (non-deleted-resource-resource
                              context raoi tid (codec/compartment-resource-type-key->id k) t)]
                 (let [ret (rf ret val)]
                   (if (reduced? ret)
                     @ret
-                    (recur ret (kv/next iter))))
-                (recur ret (kv/next iter)))
+                    (recur ret (kv/next! iter))))
+                (recur ret (kv/next! iter)))
               ret)))))))
 
 
@@ -442,12 +312,12 @@
         (with-open [snapshot (kv/new-snapshot kv-store)
                     i (resource-as-of-iter snapshot)]
           (loop [ret init
-                 k (kv/seek i (codec/resource-as-of-key tid id start-t))]
+                 k (kv/seek! i (codec/resource-as-of-key tid id start-t))]
             (if (some-> k key-still-valid?)
               (let [ret (rf ret (resource*** context k (kv/value i)))]
                 (if (reduced? ret)
                   @ret
-                  (recur ret (kv/next i))))
+                  (recur ret (kv/next! i))))
               ret)))))))
 
 
@@ -484,12 +354,12 @@
                     i (kv/new-iterator snapshot :type-as-of-index)
                     ri (resource-as-of-iter snapshot)]
           (loop [ret init
-                 k (kv/seek i (type-as-of-key tid start-t start-id))]
+                 k (kv/seek! i (type-as-of-key tid start-t start-id))]
             (if (some-> k key-still-valid?)
               (let [ret (rf ret (type-history-entry context ri tid k))]
                 (if (reduced? ret)
                   @ret
-                  (recur ret (kv/next i))))
+                  (recur ret (kv/next! i))))
               ret)))))))
 
 
@@ -526,96 +396,97 @@
                     i (kv/new-iterator snapshot :system-as-of-index)
                     ri (resource-as-of-iter snapshot)]
           (loop [ret init
-                 k (kv/seek i (system-as-of-key start-t start-tid start-id))]
+                 k (kv/seek! i (system-as-of-key start-t start-tid start-id))]
             (if (some-> k key-still-valid?)
               (let [ret (rf ret (system-history-entry context ri k))]
                 (if (reduced? ret)
                   @ret
-                  (recur ret (kv/next i))))
+                  (recur ret (kv/next! i))))
               ret)))))))
 
 
-(defn- spv-resource
-  "Given an `tid`, `id` and `t`, searches for the hash at `t` in `raoi` and
-  checks back whether :search-param-value-index actually contains that hash.
-
-  If both is true, the resource triple of the matching resource is returned."
-  [context snapshot k raoi tid id t]
+(defn- non-deleted-resource [context raoi tid id t]
   (when-let [resource (resource* context raoi tid id t)]
     (when-not (deleted? resource)
-      (codec/hash->search-param-value-key! (hash resource) k)
-      (when (kv/snapshot-get snapshot :search-param-value-index k)
-        resource))))
+      resource)))
 
 
-(defn- spv-resource* [context snapshot k raoi tid id clauses t]
-  (when-let [resource (spv-resource context snapshot k raoi tid id t)]
-    (loop [[[search-param values] & clauses] clauses]
-      (if search-param
-        (when (search-param/matches? search-param snapshot tid id (hash resource) values)
-          (recur clauses))
-        resource))))
+(defn- resource-mapper [context raoi tid t]
+  (mapcat
+    (fn [[id hash-prefixes]]
+      (when-let [resource (non-deleted-resource context raoi tid id t)]
+        [[resource hash-prefixes]]))))
 
 
-(defn type-query [context snapshot raoi tid clauses t]
-  (let [[[search-param values] & clauses] clauses]
-    (reify IReduceInit
-      (reduce [_ rf init]
-        (with-open [spi (search-param/new-iterator search-param snapshot tid values)]
-          (loop [ret init
-                 k (search-param/first spi)]
-            (if k
-              (let [id (codec/search-param-value-key->id k)]
-                (if-let [resource (spv-resource* context snapshot k raoi tid id clauses t)]
-                  (let [ret (rf ret resource)]
-                    (if (reduced? ret)
-                      @ret
-                      (recur ret (search-param/next spi id))))
-                  (recur ret (search-param/next spi id))))
-              ret)))))))
+(def ^:private matches-hash-prefixes-filter
+  (mapcat
+    (fn [[resource hash-prefixes]]
+      (when (some (partial bytes/starts-with? (resource/hash resource)) hash-prefixes)
+        [resource]))))
 
 
-(defn- compartment-spv-resource
-  "Given an `tid`, `id` and `t`, searches for the most recent version of the
-  resource in :resource-as-of-index and checks back whether
-  :compartment-search-param-value-index actually contains the hash of that
-  version.
+(defn- other-clauses-filter [snapshot tid clauses]
+  (if (seq clauses)
+    (filter
+      (fn [resource]
+        (let [id (codec/id-bytes (:id resource))
+              hash (resource/hash resource)]
+          (loop [[[search-param values] & clauses] clauses]
+            (if search-param
+              (when (search-param/matches? search-param snapshot tid id hash values)
+                (recur clauses))
+              resource)))))
+    identity))
 
-  If both is true, the resource is returned."
-  [context snapshot k resource-as-of-iter tid id t]
-  (when-let [resource (resource* context resource-as-of-iter tid id t)]
-    (when-not (deleted? resource)
-      (codec/hash->compartment-search-param-value-key! (hash resource) k)
-      (when (kv/snapshot-get snapshot :compartment-search-param-value-index k)
-        resource))))
+
+(defn comp'
+  ([] identity)
+  ([f] f)
+  ([f g]
+   (fn
+     ([] (f (g)))
+     ([x] (f (g x)))
+     ([x y] (f (g x y)))
+     ([x y z] (f (g x y z)))
+     ([x y z & args] (f (apply g x y z args)))))
+  ([f g h]
+   (fn
+     ([] (f (g (h))))
+     ([x] (f (g (h x))))
+     ([x y] (f (g (h x y))))
+     ([x y z] (f (g (h x y z))))
+     ([x y z & args] (f (g (apply h x y z args))))))
+  ([f g h i]
+   (fn
+     ([] (f (g (h (i)))))
+     ([x] (f (g (h (i x)))))
+     ([x y] (f (g (h (i x y)))))
+     ([x y z] (f (g (h (i x y z)))))
+     ([x y z & args] (f (g (h (apply i x y z args))))))))
 
 
-(defn- compartment-spv-resource* [context snapshot compartment k raoi tid id clauses t]
-  (when-let [resource (compartment-spv-resource context snapshot k raoi tid id t)]
-    (loop [[[search-param values] & clauses] clauses]
-      (if search-param
-        (when (search-param/compartment-matches? search-param snapshot compartment tid id (hash resource) values)
-          (recur clauses))
-        resource))))
+(defn type-query [context snapshot svri raoi tid clauses t]
+  (let [[[search-param values] & other-clauses] clauses]
+    (coll/eduction
+      (comp'
+        tq/key-by-id-grouper
+        (resource-mapper context raoi tid t)
+        matches-hash-prefixes-filter
+        (other-clauses-filter snapshot tid other-clauses))
+      (search-param/keys search-param snapshot svri tid values))))
 
 
 (defn compartment-query
-  [context snapshot cspvi raoi compartment tid clauses t]
-  (reify IReduceInit
-    (reduce [_ rf init]
-      (let [[[search-param values] & clauses] clauses
-            spi (search-param/new-compartment-iterator search-param cspvi compartment tid values)]
-        (loop [ret init
-               k (search-param/first spi)]
-          (if k
-            (let [id (codec/compartment-search-param-value-key->id k)]
-              (if-let [resource (compartment-spv-resource* context snapshot compartment k raoi tid id clauses t)]
-                (let [ret (rf ret resource)]
-                  (if (reduced? ret)
-                    @ret
-                    (recur ret (search-param/next spi id))))
-                (recur ret (search-param/next spi id))))
-            ret))))))
+  "Iterates over the CSV index "
+  [context snapshot csvri raoi compartment tid clauses t]
+  (let [[[search-param values] & other-clauses] clauses]
+    (coll/eduction
+      (comp'
+        cq/key-by-id-grouper
+        (resource-mapper context raoi tid t)
+        matches-hash-prefixes-filter
+        (other-clauses-filter snapshot tid other-clauses))
+      (search-param/compartment-keys search-param csvri compartment tid values))))
 
 
 (defn- type-total* [i tid t]

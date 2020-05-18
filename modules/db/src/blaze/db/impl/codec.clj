@@ -45,12 +45,6 @@
 
 
 
-;; ---- Special Byte Arrays ---------------------------------------------------
-
-(def empty-byte-array (byte-array 0))
-
-
-
 ;; ---- Byte Array Functions --------------------------------------------------
 
 
@@ -222,6 +216,29 @@
 
 (defn hash->compartment-search-param-value-key! [^bytes hash ^bytes k]
   (System/arraycopy hash 0 k (- (alength k) hash-prefix-size) hash-prefix-size))
+
+
+(defn compartment-search-param-value-key->hash-prefix [^bytes k]
+  (Arrays/copyOfRange k (- (alength k) hash-prefix-size) (alength k)))
+
+
+(defn compartment-search-param-value-key-hash= [^bytes k ^bytes hash]
+  (Arrays/equals k (- (alength k) hash-prefix-size) (alength k) hash 0 hash-prefix-size))
+
+
+(defn decode-compartment-search-param-value-key [k co-res-id-length value-length id-length]
+  (let [bb (ByteBuffer/wrap k)
+        co-res-id (byte-array co-res-id-length)
+        value (byte-array value-length)
+        id' (byte-array id-length)
+        hash-prefix (byte-array hash-prefix-size)]
+    {:co-c-hash (.getInt bb)
+     :co-res-id (do (.get bb co-res-id) (id co-res-id))
+     :sp-c-hash (.getInt bb)
+     :tid (.getInt bb)
+     :value (do (.get bb value) (.get bb) (hex value))
+     :id (do (.get bb id') (.get bb) (id id'))
+     :hash-prefix (do (.get bb hash-prefix) (hex hash-prefix))}))
 
 
 
@@ -531,11 +548,11 @@
 
 
 (defn c-hash [code]
-  (.asInt (.hashBytes (Hashing/murmur3_32) (.getBytes ^String code utf-8))))
+  (.asInt (.hashString (Hashing/murmur3_32) ^String code utf-8)))
 
 
 (defn v-hash [value]
-  (.asBytes (.hashBytes (Hashing/murmur3_32) (.getBytes ^String value utf-8))))
+  (.asBytes (.hashString (Hashing/murmur3_32) ^String value utf-8)))
 
 
 (defn string
@@ -785,13 +802,16 @@
   (Arrays/copyOfRange lb-ub (inc (aget lb-ub 0)) (alength lb-ub)))
 
 
-(defn quantity [value unit]
-  (let [unit-hash (v-hash (or unit ""))
-        ^bytes number (number value)
-        value (byte-array (+ v-hash-size (alength number)))]
-    (System/arraycopy unit-hash 0 value 0 v-hash-size)
-    (System/arraycopy number 0 value v-hash-size (alength number))
-    value))
+(defn quantity
+  ([value]
+   (quantity value nil))
+  ([value unit]
+   (let [unit-hash (v-hash (or unit ""))
+         ^bytes number (number value)
+         value (byte-array (+ v-hash-size (alength number)))]
+     (System/arraycopy unit-hash 0 value 0 v-hash-size)
+     (System/arraycopy number 0 value v-hash-size (alength number))
+     value)))
 
 
 (defn deleted-resource [type id]
@@ -866,11 +886,6 @@
     (.asBytes (.hash hasher))))
 
 
-(def max-hash
-  "The maximum hash value. A byte array with all bits set to 1."
-  (byte-array (repeat hash-size 255)))
-
-
 
 ;; ---- Transaction -----------------------------------------------------------
 ;; TODO: encode nanoseconds here?
@@ -899,3 +914,12 @@
   (let [{:keys [inst]} (nippy/fast-thaw bs)]
     {:blaze.db/t t
      :blaze.db.tx/instant (Instant/ofEpochMilli inst)}))
+
+
+(defn tx-success-entries [t tx-instant]
+  [[:tx-success-index (t-key t) (encode-tx {:blaze.db.tx/instant tx-instant})]
+   [:t-by-instant-index (tx-by-instant-key tx-instant) (encode-t t)]])
+
+
+(defn tx-error-entries [t anomaly]
+  [[:tx-error-index (t-key t) (nippy/fast-freeze anomaly)]])

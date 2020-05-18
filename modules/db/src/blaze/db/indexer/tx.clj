@@ -64,20 +64,17 @@
   (with-open [_ (prom/timer tx-indexer-duration-seconds "verify-tx-cmd-put")]
     (let [tid (codec/tid type)
           id-bytes (codec/id-bytes id)
-          [old-hash state old-t] (index/hash-state-t resource-as-of-iter tid id-bytes t)
+          [_ state old-t] (index/hash-state-t resource-as-of-iter tid id-bytes t)
           num-changes (or (some-> state codec/state->num-changes) 0)]
       (if (or (nil? matches) (= matches old-t))
-        (if (bytes/= old-hash new-hash)
-          ;; no change of the resource content results in a no-op
-          res
-          (cond->
-            (-> res
-                (update :entries into (entries tid id-bytes t new-hash num-changes :put))
-                (update-in [:stats type :num-changes] (fnil inc 0)))
-            (nil? old-t)
-            (update-in [:stats type :total] (fnil inc 0))))
+        (cond->
+          (-> res
+              (update :entries into (entries tid id-bytes t new-hash num-changes :put))
+              (update-in [:stats type :num-changes] (fnil inc 0)))
+          (nil? old-t)
+          (update-in [:stats type :total] (fnil inc 0)))
         (reduced
-          (index/tx-error-entries
+          (codec/tx-error-entries
             t
             {::anom/category ::anom/conflict
              ::anom/message (format "put mismatch for %s/%s" type id)}))))))
@@ -105,7 +102,7 @@
   (with-open [i (resource-as-of-iter snapshot)]
     (reduce
       (partial verify-tx-cmd i t)
-      {:entries (index/tx-success-entries t tx-instant)}
+      {:entries (codec/tx-success-entries t tx-instant)}
       tx-cmds)))
 
 
@@ -188,12 +185,11 @@
   (last-t [_]
     (with-open [snapshot (kv/new-snapshot kv-store)
                 i (kv/new-iterator snapshot :tx-success-index)]
-      (or (some-> (kv/seek-to-first i) (codec/decode-t-key)) 0)))
+      (or (some-> (kv/seek-to-first! i) (codec/decode-t-key)) 0)))
 
   (-index-tx [_ t tx-instant tx-cmds]
     (with-open [_ (prom/timer tx-indexer-duration-seconds "submit-tx")]
-      (when-let [entries (verify-tx-cmds kv-store t tx-instant tx-cmds)]
-        (kv/put kv-store entries))))
+      (kv/put kv-store (verify-tx-cmds kv-store t tx-instant tx-cmds))))
 
   (-tx-result [_ t]
     (md/loop [res (find-tx-result kv-store t)]

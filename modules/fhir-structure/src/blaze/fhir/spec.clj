@@ -70,13 +70,16 @@
     :one))
 
 
-(defn choice? [spec]
+(defn choice?
+  [spec]
   (and (sequential? spec) (= `s2/or (first spec))))
 
 
-(defn choices [spec]
-  (when (choice? spec)
-    (partition 2 (rest spec))))
+(defn choices
+  "Takes an or-spec form and returns its content."
+  [spec]
+  ;; fancy stuff to get an clojure.lang.PersistentList
+  (into (list) (map vec) (reverse (partition 2 (rest spec)))))
 
 
 (defn type-spec [spec]

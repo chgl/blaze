@@ -10,18 +10,6 @@
     [cognitect.anomalies :as anom]))
 
 
-(s/def :blaze.db.search-param/iterator
-  #(satisfies? search-param/Iterator %))
-
-
-(s/fdef search-param/first
-  :args (s/cat :iterator :blaze.db.search-param/iterator))
-
-
-(s/fdef search-param/next
-  :args (s/cat :iterator :blaze.db.search-param/iterator :current-id bytes?))
-
-
 (s/def :blaze.db.compartment/c-hash
   :blaze.db/c-hash)
 
@@ -34,31 +22,42 @@
   (s/keys :req-un [:blaze.db.compartment/c-hash :blaze.db.compartment/res-id]))
 
 
-(s/fdef search-param/new-iterator
-  :args (s/cat :search-param :blaze.db/search-param :snapshot :blaze.db/kv-snapshot
-               :tid :blaze.db/tid :values (s/coll-of string? :min-count 1))
-  :ret :blaze.db.search-param/iterator)
+(s/fdef search-param/keys
+  :args (s/cat :search-param :blaze.db/search-param
+               :snapshot :blaze.db/kv-snapshot
+               :svri :blaze.db/kv-iterator
+               :tid :blaze.db/tid
+               :compiled-values (s/coll-of some? :min-count 1))
+  :ret (s/coll-of bytes?))
 
 
-(s/fdef search-param/new-compartment-iterator
-  :args (s/cat :search-param :blaze.db/search-param :cspvi :blaze.db/kv-iterator
+(s/fdef search-param/compartment-keys
+  :args (s/cat :search-param :blaze.db/search-param
+               :csvri :blaze.db/kv-iterator
                :compartment :blaze.db/compartment
-               :tid :blaze.db/tid :values (s/coll-of string? :min-count 1))
-  :ret :blaze.db.search-param/iterator)
+               :tid :blaze.db/tid
+               :compiled-values (s/coll-of some? :min-count 1))
+  :ret (s/coll-of bytes?))
 
 
 (s/fdef search-param/matches?
-  :args (s/cat :search-param :blaze.db/search-param :snapshot :blaze.db/kv-snapshot
-               :tid :blaze.db/tid :id bytes? :hash :blaze.resource/hash
-               :values (s/coll-of string? :min-count 1))
+  :args (s/cat :search-param :blaze.db/search-param
+               :snapshot :blaze.db/kv-snapshot
+               :tid :blaze.db/tid
+               :id bytes?
+               :hash :blaze.resource/hash
+               :compiled-values (s/coll-of some? :min-count 1))
   :ret boolean?)
 
 
 (s/fdef search-param/compartment-matches?
-  :args (s/cat :search-param :blaze.db/search-param :snapshot :blaze.db/kv-snapshot
+  :args (s/cat :search-param :blaze.db/search-param
+               :snapshot :blaze.db/kv-snapshot
                :compartment :blaze.db/compartment
-               :tid :blaze.db/tid :id bytes? :hash :blaze.resource/hash
-               :values (s/coll-of string? :min-count 1))
+               :tid :blaze.db/tid
+               :id bytes?
+               :hash :blaze.resource/hash
+               :compiled-values (s/coll-of some? :min-count 1))
   :ret boolean?)
 
 

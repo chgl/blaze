@@ -57,5 +57,5 @@
 
 (defprotocol Query
   (-execute
-    [query context snapshot raoi cspvi t]
-    [query context snapshot raoi cspvi t arg1]))
+    [query context snapshot raoi svri csvri t]
+    [query context snapshot raoi svri csvri t arg1]))

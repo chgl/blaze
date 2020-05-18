@@ -15,7 +15,7 @@
 (set! *warn-on-reflection* true)
 
 
-(defrecord BatchDb [context node snapshot raoi cspvi t]
+(defrecord BatchDb [context node snapshot raoi svri csvri t]
   p/Db
   (-resource [_ type id]
     (index/resource* context raoi (codec/tid type) (codec/id-bytes id) t))
@@ -28,10 +28,10 @@
       (index/compartment-list context compartment (codec/tid type) (some-> start-id codec/id-bytes) t)))
 
   (-execute-query [_ query]
-    (p/-execute query context snapshot raoi cspvi t))
+    (p/-execute query context snapshot raoi svri csvri t))
 
   (-execute-query [_ query arg1]
-    (p/-execute query context snapshot raoi cspvi t arg1))
+    (p/-execute query context snapshot raoi svri csvri t arg1))
 
   p/QueryCompiler
   (-compile-type-query [_ type clauses]
@@ -42,7 +42,8 @@
 
   Closeable
   (close [_]
-    (.close ^Closeable cspvi)
+    (.close ^Closeable svri)
+    (.close ^Closeable csvri)
     (.close ^Closeable raoi)
     (.close ^Closeable snapshot)))
 
@@ -53,13 +54,13 @@
 
 (defrecord TypeQuery [tid clauses]
   p/Query
-  (-execute [_ context snapshot raoi _ t]
-    (index/type-query context snapshot raoi tid clauses t)))
+  (-execute [_ context snapshot raoi svri _ t]
+    (index/type-query context snapshot svri raoi tid clauses t)))
 
 
 (defrecord CompartmentQuery [c-hash tid clauses]
   p/Query
-  (-execute [_ context snapshot raoi cspvi t arg1]
+  (-execute [_ context snapshot raoi _ cspvi t arg1]
     (let [compartment {:c-hash c-hash :res-id (codec/id-bytes arg1)}]
       (index/compartment-query context snapshot cspvi raoi compartment
                                tid clauses t))))
@@ -72,5 +73,6 @@
     (->BatchDb
       context node snapshot
       (index/resource-as-of-iter snapshot)
+      (kv/new-iterator snapshot :search-param-value-index)
       (kv/new-iterator snapshot :compartment-search-param-value-index)
       t)))

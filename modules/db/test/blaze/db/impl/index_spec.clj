@@ -5,7 +5,7 @@
     [blaze.db.impl.search-param-spec]
     [clojure.spec.alpha :as s])
   (:import
-    [blaze.db.impl.index Hash]
+    [blaze.db.impl.index.resource Hash]
     [com.github.benmanes.caffeine.cache LoadingCache]))
 
 
@@ -19,10 +19,6 @@
 
 (s/def :blaze.db.index/context
   (s/keys :req [:blaze.db/kv-store :blaze.db/resource-cache]))
-
-
-(s/fdef index/tx-success-entries
-  :args (s/cat :t :blaze.db/t :tx-instant inst?))
 
 
 (s/fdef index/tx
@@ -123,15 +119,21 @@
 
 
 (s/def :blaze.db.index.query/clause
-  (s/tuple :blaze.db/search-param (s/coll-of string?)))
+  (s/tuple :blaze.db/search-param (s/coll-of some?)))
+
+
+;; it's a bit faster to have the clauses as seq instead of an vector
+(s/def :blaze.db.index.query/clauses
+  (s/coll-of :blaze.db.index.query/clause :kind seq? :min-count 1))
 
 
 (s/fdef index/type-query
   :args (s/cat :context :blaze.db.index/context
                :snapshot :blaze.db/kv-snapshot
+               :svri :blaze.db/kv-iterator
                :raoi :blaze.db/kv-iterator
                :tid :blaze.db/tid
-               :clauses (s/coll-of :blaze.db.index.query/clause :min-count 1)
+               :clauses :blaze.db.index.query/clauses
                :t :blaze.db/t)
   :ret (s/coll-of :blaze/resource))
 
@@ -139,11 +141,11 @@
 (s/fdef index/compartment-query
   :args (s/cat :context :blaze.db.index/context
                :snapshot :blaze.db/kv-snapshot
-               :cspvi :blaze.db/kv-iterator
+               :csvri :blaze.db/kv-iterator
                :raoi :blaze.db/kv-iterator
                :compartment :blaze.db/compartment
                :tid :blaze.db/tid
-               :clauses (s/coll-of :blaze.db.index.query/clause :min-count 1)
+               :clauses :blaze.db.index.query/clauses
                :t :blaze.db/t)
   :ret (s/coll-of :blaze/resource))
 
