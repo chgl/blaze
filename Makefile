@@ -13,7 +13,7 @@ lint-cql:
 	cd modules/cql; clojure -A:clj-kondo --lint src test
 
 lint-db:
-	cd modules/db; clojure -A:clj-kondo --lint src test
+	cd modules/db; clj-kondo --lint src test
 
 lint-db-stub:
 	cd modules/db-stub; clojure -A:clj-kondo --lint src

@@ -3,6 +3,8 @@
     [blaze.db.impl.bytes :as bytes]
     [blaze.db.impl.codec :as codec]
     [blaze.db.impl.index :as index]
+    [blaze.db.impl.index.system-stats :as system-stats]
+    [blaze.db.impl.index.type-stats :as type-stats]
     [blaze.db.indexer :as indexer]
     [blaze.db.kv :as kv]
     [blaze.module :refer [reg-collector]]
@@ -52,10 +54,11 @@
   [_ t res [_ type id hash]]
   (log/trace "verify-tx-cmd :create" type id)
   (with-open [_ (prom/timer tx-indexer-duration-seconds "verify-tx-cmd-create")]
-    (-> res
-        (update :entries into (entries (codec/tid type) (codec/id-bytes id) t hash 0 :create))
-        (update-in [:stats type :num-changes] (fnil inc 0))
-        (update-in [:stats type :total] (fnil inc 0)))))
+    (let [tid (codec/tid type)]
+      (-> res
+          (update :entries into (entries (codec/tid type) (codec/id-bytes id) t hash 0 :create))
+          (update-in [:stats tid :num-changes] (fnil inc 0))
+          (update-in [:stats tid :total] (fnil inc 0))))))
 
 
 (defmethod verify-tx-cmd :put
@@ -70,9 +73,9 @@
         (cond->
           (-> res
               (update :entries into (entries tid id-bytes t new-hash num-changes :put))
-              (update-in [:stats type :num-changes] (fnil inc 0)))
+              (update-in [:stats tid :num-changes] (fnil inc 0)))
           (nil? old-t)
-          (update-in [:stats type :total] (fnil inc 0)))
+          (update-in [:stats tid :total] (fnil inc 0)))
         (reduced
           (codec/tx-error-entries
             t
@@ -90,8 +93,8 @@
           num-changes (or (some-> state codec/state->num-changes) 0)]
       (-> res
           (update :entries into (entries tid id-bytes t hash num-changes :delete))
-          (update-in [:stats type :num-changes] (fnil inc 0))
-          (update-in [:stats type :total] (fnil dec 0))))))
+          (update-in [:stats tid :num-changes] (fnil inc 0))
+          (update-in [:stats tid :total] (fnil dec 0))))))
 
 
 (defn- resource-as-of-iter ^Closeable [snapshot]
@@ -99,57 +102,30 @@
 
 
 (defn- verify-tx-cmds* [snapshot t tx-instant tx-cmds]
-  (with-open [i (resource-as-of-iter snapshot)]
+  (with-open [iter (resource-as-of-iter snapshot)]
     (reduce
-      (partial verify-tx-cmd i t)
+      (partial verify-tx-cmd iter t)
       {:entries (codec/tx-success-entries t tx-instant)}
       tx-cmds)))
 
 
-(defn- type-stat-entry
-  [i t [type {:keys [total num-changes] :or {total 0 num-changes 0}}]]
-  (let [tid (codec/tid type)
-        old-type-stats (index/type-stats i tid t)
-        total (+ (or (some-> old-type-stats codec/type-stats-value->total) 0) total)
-        num-changes (+ (or (some-> old-type-stats codec/type-stats-value->num-changes) 0) num-changes)]
-    [:type-stats-index
-     (codec/type-stats-key tid t)
-     (codec/type-stats-value total num-changes)]))
-
-
-(defn- type-stats-iter ^Closeable [snapshot]
-  (kv/new-iterator snapshot :type-stats-index))
+(defn- type-stat-entry!
+  [iter t [tid increments]]
+  (let [current-stats (type-stats/get! iter tid t)]
+    (type-stats/entry tid t (merge-with + current-stats increments))))
 
 
 (defn- conj-type-stats [entries snapshot t stats]
   (with-open [_ (prom/timer tx-indexer-duration-seconds "type-stats")
-              i (type-stats-iter snapshot)]
-    (into entries (map (partial type-stat-entry i t)) stats)))
-
-
-(defn- system-stats-iter ^Closeable [snapshot]
-  (kv/new-iterator snapshot :system-stats-index))
-
-
-(defn- system-total [init stats]
-  (transduce (map (comp #(or % 0) :total)) + init (vals stats)))
-
-
-(defn- system-num-changes [init stats]
-  (transduce (map :num-changes) + init (vals stats)))
+              iter (type-stats/new-iterator snapshot)]
+    (into entries (map #(type-stat-entry! iter t %)) stats)))
 
 
 (defn- system-stats [snapshot t stats]
   (with-open [_ (prom/timer tx-indexer-duration-seconds "system-stats")
-              i (system-stats-iter snapshot)]
-    (let [old-system-stats (index/system-stats i t)
-          total (or (some-> old-system-stats codec/system-stats-value->total) 0)
-          num-changes (or (some-> old-system-stats codec/system-stats-value->num-changes) 0)]
-      [:system-stats-index
-       (codec/system-stats-key t)
-       (codec/system-stats-value
-         (system-total total stats)
-         (system-num-changes num-changes stats))])))
+              iter (system-stats/new-iterator snapshot)]
+    (let [current-stats (system-stats/get! iter t)]
+      (system-stats/entry t (apply merge-with + current-stats (vals stats))))))
 
 
 (defn- post-process-res [snapshot t {:keys [entries stats]}]

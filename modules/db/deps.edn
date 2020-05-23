@@ -35,14 +35,7 @@
   {:mvn/version "0.1.8"}}
 
  :aliases
- {:dev
-  {:extra-paths ["dev"]
-
-   :extra-deps
-   {criterium
-    {:mvn/version "0.4.5"}}}
-
-  :test
+ {:test
   {:extra-paths ["test"]
 
    :extra-deps
@@ -60,6 +53,6 @@
   :clj-kondo
   {:extra-deps
    {clj-kondo
-    {:mvn/version "2020.04.05"}}
+    {:mvn/version "2020.05.09"}}
 
    :main-opts ["-m" "clj-kondo.main"]}}}

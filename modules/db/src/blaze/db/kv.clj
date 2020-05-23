@@ -1,6 +1,7 @@
 (ns blaze.db.kv
   "Protocols for key-value store backend implementations."
-  (:refer-clojure :exclude [get key]))
+  (:refer-clojure :exclude [get key])
+  (:import [java.nio ByteBuffer]))
 
 
 (defprotocol KvIterator
@@ -8,24 +9,31 @@
 
   (-seek [iter target])
 
+  (-seek' [iter target])
+
   (-seek-for-prev [iter target])
 
+  (-seek-for-prev' [iter target])
+
   (-seek-to-first [iter])
+
+  (-seek-to-first' [iter])
 
   (seek-to-last [iter])
 
   (-next [iter])
 
+  (-next' [iter])
+
   (-prev [iter])
+
+  (-prev' [iter])
 
   (-valid? [iter])
 
-  (key [iter])
+  (-key [iter] [iter byte-buffer])
 
-  (-value [iter]
-    "Returns the value of the current entry of this iterator.
-
-    Must not be called if a previous operation returned nil."))
+  (-value [iter] [iter byte-buffer]))
 
 
 (defn seek!

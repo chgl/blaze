@@ -1,6 +1,5 @@
 (ns blaze.db.impl.index.resource
   (:require
-    [blaze.db.impl.bytes :as bytes]
     [blaze.db.impl.codec :as codec]
     [blaze.db.kv :as kv])
   (:import
@@ -15,14 +14,14 @@
 
 
 ;; Used as cache key. Implements equals on top of the byte array of a hash.
-(deftype Hash [hash]
+(deftype Hash [^bytes hash]
   Object
   (equals [this other]
     (if (identical? this other)
       true
       (if (or (nil? other) (not= Hash (class other)))
         false
-        (bytes/= hash (.hash ^Hash other)))))
+        (Arrays/equals ^bytes hash ^bytes (.hash ^Hash other)))))
   (hashCode [_]
     (Arrays/hashCode ^bytes hash)))
 
@@ -62,12 +61,12 @@
 
 
 (deftype ResourceContentMeta
-  [^LoadingCache cache hash t ^:volatile-mutable ^IPersistentMap meta]
+  [^LoadingCache cache hash ^long t ^:volatile-mutable ^IPersistentMap meta]
 
   IPersistentMap
   (valAt [_ key]
     (case key
-      :versionId t
+      :versionId (str t)
       (if meta
         (.valAt meta key)
         (do (set! meta (.valAt ^IPersistentMap (.get cache hash) :meta {}))
@@ -154,5 +153,5 @@
 (defn mk-resource
   [{:blaze.db/keys [kv-store resource-cache]} type id hash state t]
   (Resource. kv-store resource-cache type id (Hash. hash) state t
-             (ResourceContentMeta. resource-cache hash (str t) nil)
+             (ResourceContentMeta. resource-cache hash t nil)
              nil nil))

@@ -1,6 +1,5 @@
 (ns blaze.db.impl.index.query
-  (:require
-    [blaze.coll.core :as coll])
+  (:require [blaze.db.impl.codec :as codec])
   (:import
     [java.nio ByteBuffer]))
 
@@ -12,7 +11,7 @@
   "Transducer which groups `[id hash-prefix]` tuples by `id` and concatenates
   all hash-prefixes within each group, outputting `[id hash-prefixes]` tuples."
   (comp
-    (partition-by coll/first)
+    (partition-by (fn [[_ id]] (ByteBuffer/wrap id)))
     (map
-      (fn group-hash-prefixes [[[id hash-prefix] & more]]
-        [(.array ^ByteBuffer id) (cons hash-prefix (map second more))]))))
+      (fn group-hash-prefixes [[[_ id hash-prefix] & more]]
+        [id (cons hash-prefix (map #(nth % 2) more))]))))

@@ -33,13 +33,22 @@
     (.seek i ^bytes target)
     (iterator->key i))
 
+  (-seek' [_ target]
+    (.seek i ^bytes target))
+
   (-seek-for-prev [_ target]
     (.seekForPrev i ^bytes target)
     (iterator->key i))
 
+  (-seek-for-prev' [_ target]
+    (.seekForPrev i ^bytes target))
+
   (-seek-to-first [_]
     (.seekToFirst i)
     (iterator->key i))
+
+  (-seek-to-first' [_]
+    (.seekToFirst i))
 
   (seek-to-last [_]
     (.seekToLast i)
@@ -49,15 +58,27 @@
     (.next i)
     (iterator->key i))
 
+  (-next' [_]
+    (.next i))
+
   (-prev [_]
     (.prev i)
     (iterator->key i))
 
+  (-prev' [_]
+    (.prev i))
+
   (-valid? [_]
     (.isValid i))
 
+  (-key [_ byte-buffer]
+    (.key i byte-buffer))
+
   (-value [_]
     (.value i))
+
+  (-value [_ byte-buffer]
+    (.value i byte-buffer))
 
   Closeable
   (close [_]

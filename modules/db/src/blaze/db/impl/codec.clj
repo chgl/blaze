@@ -9,10 +9,11 @@
     [com.google.common.hash Hashing PrimitiveSink]
     [com.google.common.io BaseEncoding]
     [java.nio ByteBuffer]
-    [java.nio.charset Charset]
+    [java.nio.charset Charset StandardCharsets]
     [java.time Instant LocalDate LocalDateTime OffsetDateTime Year YearMonth
                ZoneId ZoneOffset]
-    [java.util Arrays List Map])
+    [java.util Arrays List Map]
+    [java.lang.reflect Array])
   (:refer-clojure :exclude [concat hash]))
 
 
@@ -39,9 +40,9 @@
 
 ;; ---- Instances -------------------------------------------------------------
 
-(def ^:private ^Charset iso-8859-1 (Charset/forName "ISO-8859-1"))
+(def ^:private ^Charset iso-8859-1 StandardCharsets/ISO_8859_1)
 
-(def ^:private ^Charset utf-8 (Charset/forName "utf-8"))
+(def ^:private ^Charset utf-8 StandardCharsets/UTF_8)
 
 
 
@@ -75,7 +76,7 @@
 
 ;; ---- Key Functions ---------------------------------------------------------
 
-(defn- descending-long
+(defn descending-long
   "Descends from Long/MAX_VALUE."
   ^long [^long l]
   (bit-xor (bit-not l) Long/MIN_VALUE))
@@ -140,8 +141,17 @@
     (Arrays/copyOfRange k (unchecked-subtract-int to hash-prefix-size) to)))
 
 
-(defn hash->search-param-value-key! [^bytes hash ^bytes k]
-  (System/arraycopy hash 0 k (unchecked-subtract-int (alength k) hash-prefix-size) hash-prefix-size))
+(defn decode-search-param-value-key [^ByteBuffer bb]
+  (let [id-size (.get bb (dec (- (.limit bb) hash-prefix-size)))
+        prefix (byte-array (- (.remaining bb) id-size 2 hash-prefix-size))
+        id (byte-array id-size)
+        hash-prefix (byte-array hash-prefix-size)]
+    (.get bb prefix)
+    (.get bb)
+    (.get bb id)
+    (.get bb)
+    (.get bb hash-prefix)
+    [prefix id hash-prefix]))
 
 
 
@@ -224,21 +234,6 @@
 
 (defn compartment-search-param-value-key-hash= [^bytes k ^bytes hash]
   (Arrays/equals k (- (alength k) hash-prefix-size) (alength k) hash 0 hash-prefix-size))
-
-
-(defn decode-compartment-search-param-value-key [k co-res-id-length value-length id-length]
-  (let [bb (ByteBuffer/wrap k)
-        co-res-id (byte-array co-res-id-length)
-        value (byte-array value-length)
-        id' (byte-array id-length)
-        hash-prefix (byte-array hash-prefix-size)]
-    {:co-c-hash (.getInt bb)
-     :co-res-id (do (.get bb co-res-id) (id co-res-id))
-     :sp-c-hash (.getInt bb)
-     :tid (.getInt bb)
-     :value (do (.get bb value) (.get bb) (hex value))
-     :id (do (.get bb id') (.get bb) (id id'))
-     :hash-prefix (do (.get bb hash-prefix) (hex hash-prefix))}))
 
 
 
@@ -344,6 +339,14 @@
     (Arrays/copyOfRange k (unchecked-add-int compartment-resource-type-key-id-from co-res-id-size) (alength k))))
 
 
+(defn decode-compartment-resource-type-key [^ByteBuffer bb]
+  (let [co-res-id-size (.get bb c-hash-size)
+        prefix (byte-array (+ c-hash-size 1 co-res-id-size tid-size))
+        id (byte-array (- (.remaining bb) (alength prefix)))]
+    (.get bb prefix)
+    (.get bb id)
+    [prefix id]))
+
 
 ;; ---- ResourceAsOf Index ----------------------------------------------------
 
@@ -369,7 +372,7 @@
   (Arrays/copyOfRange k tid-size (- (alength k) t-size)))
 
 
-(defn resource-as-of-key->t [^bytes k]
+(defn resource-as-of-key->t ^long [^bytes k]
   (descending-long (.getLong (ByteBuffer/wrap k) (- (alength k) t-size))))
 
 
@@ -407,6 +410,37 @@
 
 (defn resource-as-of-value->state [v]
   (.getLong (ByteBuffer/wrap v) hash-size))
+
+
+(defrecord ResourceAsOfKV [^int tid id ^long t hash ^long state])
+
+
+(defn resource-as-of-kv-decoder
+  "Returns a function which decodes an `ResourceAsOfKV` out of a key and a value
+  ByteBuffer from the resource-as-of index.
+
+  Closes over a shared byte array for id decoding, because the String
+  constructor creates a copy of the id bytes anyway. Can only be used from one
+  thread.
+
+  The decode function creates only four objects, the ResourceAsOfKV, the String
+  for the id, the byte array inside the string and the byte array for the hash.
+
+  Both ByteBuffers are changed during decoding and have to be reset accordingly
+  after decoding."
+  []
+  (let [id (byte-array max-id-size)]
+    (fn [^ByteBuffer kb ^ByteBuffer vb]
+      (ResourceAsOfKV.
+        (.getInt kb)
+        (let [id-size (- (.remaining kb) t-size)]
+          (.get kb id 0 id-size)
+          (String. id 0 id-size iso-8859-1))
+        (descending-long (.getLong kb))
+        (let [hash (byte-array hash-size)]
+          (.get vb hash)
+          hash)
+        (.getLong vb)))))
 
 
 
@@ -472,68 +506,15 @@
 
 
 
-;; ---- TypeStats Index -------------------------------------------------------
-
-(defn type-stats-key [tid t]
-  (-> (ByteBuffer/allocate (+ tid-size t-size))
-      (.putInt tid)
-      (.putLong (descending-long t))
-      (.array)))
-
-
-(defn type-stats-key->tid [k]
-  (.getInt (ByteBuffer/wrap k)))
-
-
-(defn type-stats-value [total num-changes]
-  (-> (ByteBuffer/allocate 16)
-      (.putLong total)
-      (.putLong num-changes)
-      (.array)))
-
-
-(defn type-stats-value->total [v]
-  (.getLong (ByteBuffer/wrap v)))
-
-
-(defn type-stats-value->num-changes [v]
-  (.getLong (ByteBuffer/wrap v) 8))
-
-
-
-;; ---- SystemStats Index -------------------------------------------------------
-
-(defn system-stats-key [t]
-  (-> (ByteBuffer/allocate t-size)
-      (.putLong (descending-long t))
-      (.array)))
-
-
-(defn system-stats-value [total num-changes]
-  (-> (ByteBuffer/allocate 16)
-      (.putLong total)
-      (.putLong num-changes)
-      (.array)))
-
-
-(defn system-stats-value->total [v]
-  (.getLong (ByteBuffer/wrap v)))
-
-
-(defn system-stats-value->num-changes [v]
-  (.getLong (ByteBuffer/wrap v) 8))
-
-
-
 ;; ---- Other Functions -------------------------------------------------------
 
 (defn- memoize-1 [f]
   (let [mem
         (-> (Caffeine/newBuilder)
-                (.build
-                  (reify CacheLoader
-                    (load [_ x]
-                      (f x)))))]
+            (.build
+              (reify CacheLoader
+                (load [_ x]
+                  (f x)))))]
     (fn [x]
       (.get mem x))))
 

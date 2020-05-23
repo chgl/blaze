@@ -3,4 +3,13 @@
   prometheus.alpha/defcounter clojure.core/def
   prometheus.alpha/defhistogram clojure.core/def}
 
+ :linters
+ {:missing-docstring
+  {:level :warning
+   :exclude [".*test$"]}
+  :unsorted-required-namespaces
+  {:level :error}
+  :single-key-in
+  {:level :error}}
+
  :skip-comments true}

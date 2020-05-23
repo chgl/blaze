@@ -4,12 +4,14 @@
     [blaze.db.indexer.tx-spec]
     [blaze.db.impl.bytes :as bytes]
     [blaze.db.impl.codec :as codec]
+    [blaze.db.impl.index.type-stats :as type-stats]
     [blaze.db.kv :as kv]
     [blaze.db.kv.mem :refer [init-mem-kv-store]]
     [clojure.spec.test.alpha :as st]
     [clojure.test :as test :refer [deftest is testing]]
     [clojure.walk :refer [postwalk]]
-    [cognitect.anomalies :as anom])
+    [cognitect.anomalies :as anom]
+    [blaze.db.impl.index.system-stats :as system-stats])
   (:import
     [com.github.benmanes.caffeine.cache LoadingCache]
     [java.time Instant]))
@@ -88,12 +90,8 @@
          [:system-as-of-index
           (codec/system-as-of-key 1 tid-patient (codec/id-bytes "0"))
           bytes/empty]
-         [:type-stats-index
-          (codec/type-stats-key tid-patient 1)
-          (codec/type-stats-value 1 1)]
-         [:system-stats-index
-          (codec/system-stats-key 1)
-          (codec/system-stats-value 1 1)]])))
+         (type-stats/entry tid-patient 1 {:total 1 :num-changes 1})
+         (system-stats/entry 1 {:total 1 :num-changes 1})])))
 
   (testing "adding a second version of a patient to a store containing it already"
     (is-entries=
@@ -111,12 +109,8 @@
          [:system-as-of-index
           (codec/system-as-of-key 2 tid-patient (codec/id-bytes "0"))
           bytes/empty]
-         [:type-stats-index
-          (codec/type-stats-key tid-patient 2)
-          (codec/type-stats-value 1 2)]
-         [:system-stats-index
-          (codec/system-stats-key 2)
-          (codec/system-stats-value 1 2)]])))
+         (type-stats/entry tid-patient 2 {:total 1 :num-changes 2})
+         (system-stats/entry 2 {:total 1 :num-changes 2})])))
 
   (testing "adding a second version of a patient to a store containing it already incl. matcher"
     (is-entries=
@@ -134,12 +128,8 @@
          [:system-as-of-index
           (codec/system-as-of-key 2 tid-patient (codec/id-bytes "0"))
           bytes/empty]
-         [:type-stats-index
-          (codec/type-stats-key tid-patient 2)
-          (codec/type-stats-value 1 2)]
-         [:system-stats-index
-          (codec/system-stats-key 2)
-          (codec/system-stats-value 1 2)]])))
+         (type-stats/entry tid-patient 2 {:total 1 :num-changes 2})
+         (system-stats/entry 2 {:total 1 :num-changes 2})])))
 
   (testing "deleting the existing patient"
     (is-entries=
@@ -158,12 +148,8 @@
          [:system-as-of-index
           (codec/system-as-of-key 2 tid-patient (codec/id-bytes "0"))
           bytes/empty]
-         [:type-stats-index
-          (codec/type-stats-key tid-patient 2)
-          (codec/type-stats-value 0 2)]
-         [:system-stats-index
-          (codec/system-stats-key 2)
-          (codec/system-stats-value 0 2)]])))
+         (type-stats/entry tid-patient 2 {:total 0 :num-changes 2})
+         (system-stats/entry 2 {:total 0 :num-changes 2})])))
 
   (testing "adding a second patient to a store containing already one"
     (is-entries=
@@ -181,12 +167,8 @@
          [:system-as-of-index
           (codec/system-as-of-key 2 tid-patient (codec/id-bytes "1"))
           bytes/empty]
-         [:type-stats-index
-          (codec/type-stats-key tid-patient 2)
-          (codec/type-stats-value 2 2)]
-         [:system-stats-index
-          (codec/system-stats-key 2)
-          (codec/system-stats-value 2 2)]])))
+         (type-stats/entry tid-patient 2 {:total 2 :num-changes 2})
+         (system-stats/entry 2 {:total 2 :num-changes 2})])))
 
   (testing "update conflict"
     (is-entries=
@@ -197,19 +179,3 @@
         2
         {::anom/category ::anom/conflict
          ::anom/message (format "put mismatch for %s/%s" "Patient" "0")}))))
-
-
-(comment
-  (require '[criterium.core :refer [bench quick-bench]])
-  (st/unstrument)
-
-  (let [cmds [[:put "Patient" "0" (codec/hash patient-0)]
-              [:put "Patient" "1" (codec/hash patient-1)]
-              [:put "Patient" "2" (codec/hash patient-2)]]]
-    (bench (tx/verify-tx-cmds empty-store 1 now cmds)))
-
-  (vec (codec/hash patient-0))
-  (vec (codec/hash patient-0-v2))
-
-  (clojure.repl/pst)
-  )

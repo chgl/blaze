@@ -131,6 +131,11 @@
   :ret (s/coll-of :blaze/resource))
 
 
+(s/fdef d/type-total
+  :args (s/cat :db :blaze.db/db :type :blaze.resource/resourceType)
+  :ret nat-int?)
+
+
 (s/fdef d/list-compartment-resources
   :args (s/cat :db :blaze.db/db
                :code :blaze.db.compartment/code :id :blaze.resource/id
@@ -162,17 +167,12 @@
   :ret (s/or :result (s/coll-of :blaze/resource) :anomaly ::anom/anomaly))
 
 
-(s/fdef d/type-total
-  :args (s/cat :db :blaze.db/db :type :blaze.resource/resourceType)
-  :ret nat-int?)
-
-
 (s/fdef d/instance-history
   :args (s/cat :db :blaze.db/db
                :type :blaze.resource/resourceType
                :id :blaze.resource/id
-               :start-t (s/nilable :blaze.db/t)
-               :since (s/nilable inst?))
+               :start-t (s/? (s/nilable :blaze.db/t))
+               :since (s/? (s/nilable inst?)))
   :ret (s/coll-of :blaze/resource))
 
 
@@ -180,7 +180,7 @@
   :args (s/cat :db :blaze.db/db
                :type :blaze.resource/resourceType
                :id :blaze.resource/id
-               :since (s/nilable inst?))
+               :since (s/? (s/nilable inst?)))
   :ret nat-int?)
 
 
@@ -194,7 +194,8 @@
 
 
 (s/fdef d/total-num-of-type-changes
-  :args (s/cat :db :blaze.db/db :type :blaze.resource/resourceType
+  :args (s/cat :db :blaze.db/db
+               :type :blaze.resource/resourceType
                :since (s/? (s/nilable inst?)))
   :ret nat-int?)
 

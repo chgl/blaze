@@ -119,12 +119,6 @@
     (prefix-seek iter (codec/resource-value-key tid id hash c-hash value))))
 
 
-(defn- get-value' [snapshot tid search-param-value-key c-hash]
-  (get-value
-    snapshot tid (codec/search-param-value-key->id search-param-value-key)
-    (codec/search-param-value-key->hash-prefix search-param-value-key) c-hash))
-
-
 (defn- get-compartment-value
   [snapshot {co-c-hash :c-hash co-res-id :res-id} tid id hash sp-c-hash]
   (kv/snapshot-get
@@ -134,8 +128,8 @@
 
 (defn- prefix-keys [iter start-key]
   (coll/eduction
-    (take-while #(bytes/starts-with? % start-key))
-    (i/keys iter start-key)))
+    (take-while (fn [[prefix]] (bytes/starts-with? prefix start-key)))
+    (i/keys iter codec/decode-search-param-value-key start-key)))
 
 
 
@@ -186,17 +180,17 @@
   (+ codec/c-hash-size codec/tid-size))
 
 
-(defn- date-key-lb? [k]
-  (codec/date-lb? k date-key-offset))
+(defn- date-key-lb? [[prefix]]
+  (codec/date-lb? prefix date-key-offset))
 
 
-(defn- date-key-ub? [k]
-  (codec/date-ub? k date-key-offset))
+(defn- date-key-ub? [[prefix]]
+  (codec/date-ub? prefix date-key-offset))
 
 
-(defn- date-eq-key-valid? [c-hash snapshot tid ub k]
-  (and (date-key-lb? k)
-       (when-let [v (get-value' snapshot tid k c-hash)]
+(defn- date-eq-key-valid? [c-hash snapshot tid ub [prefix id hash-prefix]]
+  (and (date-key-lb? [prefix])
+       (when-let [v (get-value snapshot tid id hash-prefix c-hash)]
          (bytes/<= (codec/date-lb-ub->ub v) ub))))
 
 
@@ -214,19 +208,19 @@
               date-eq-key-valid? #(date-eq-key-valid? c-hash snapshot tid ub %)]
           (coll/eduction
             (take-while date-eq-key-valid?)
-            (i/keys svri start-key)))
+            (i/keys svri codec/decode-search-param-value-key start-key)))
 
         :ge
         (let [start-key (codec/search-param-value-key c-hash tid (date-lb value))]
           (coll/eduction
             (take-while date-key-lb?)
-            (i/keys svri start-key)))
+            (i/keys svri codec/decode-search-param-value-key start-key)))
 
         :le
         (let [^bytes start-key (codec/search-param-value-key-for-prev c-hash tid (date-ub value))]
           (coll/eduction
             (take-while date-key-ub?)
-            (i/keys-prev svri start-key)))
+            (i/keys-prev svri codec/decode-search-param-value-key start-key)))
 
         (throw-anom ::anom/unsupported (format "Unsupported prefix `%s` in search parameter of type date." (clojure.core/name op))))))
 

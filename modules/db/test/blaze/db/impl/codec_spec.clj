@@ -246,11 +246,6 @@
   :ret :blaze.db/id-bytes)
 
 
-(s/fdef codec/resource-as-of-key->t
-  :args (s/cat :k :blaze/resource-as-of-key)
-  :ret :blaze.db/t)
-
-
 (s/def :blaze.db/state
   nat-int?)
 
@@ -355,23 +350,6 @@
 
 
 
-;; ---- TypeStats Index -------------------------------------------------------
-
-(s/def :blaze.db/type-stats-key
-  bytes?)
-
-
-(s/fdef codec/type-stats-key
-  :args (s/cat :tid :blaze.db/tid :t :blaze.db/t)
-  :ret :blaze.db/type-stats-key)
-
-
-(s/fdef codec/type-stats-key->tid
-  :args (s/cat :k :blaze.db/type-stats-key)
-  :ret :blaze.db/tid)
-
-
-
 ;; ---- Other Functions -------------------------------------------------------
 
 (s/fdef codec/tid
@@ -397,6 +375,16 @@
 (s/fdef codec/date-lb
   :args (s/cat :zone-id #(instance? ZoneId %) :date-time string?)
   :ret bytes?)
+
+
+(s/fdef codec/date-lb?
+  :args (s/cat :b bytes? :offset nat-int?)
+  :ret boolean?)
+
+
+(s/fdef codec/date-ub?
+  :args (s/cat :b bytes? :offset nat-int?)
+  :ret boolean?)
 
 
 (s/fdef codec/date-ub

@@ -1,10 +1,10 @@
 (ns blaze.db.search-param-registry-test
   (:require
+    [blaze.db.impl.codec :as codec]
     [blaze.db.search-param-registry :as sr]
     [clojure.spec.test.alpha :as st]
     [clojure.test :as test :refer [deftest]]
-    [juxt.iota :refer [given]]
-    [blaze.db.impl.codec :as codec]))
+    [juxt.iota :refer [given]]))
 
 
 (defn fixture [f]

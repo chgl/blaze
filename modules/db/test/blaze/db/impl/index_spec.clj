@@ -47,35 +47,17 @@
 
 
 (s/fdef index/num-of-instance-changes
-  :args (s/cat :context :blaze.db.index/context :tid :blaze.db/tid
-               :id :blaze.db/id-bytes
-               :start-t :blaze.db/t
-               :since-t :blaze.db/t)
-  :ret nat-int?)
-
-
-(s/fdef index/type-stats
-  :args (s/cat :iter :blaze.db/kv-iterator :tid :blaze.db/tid :t :blaze.db/t)
-  :ret (s/nilable bytes?))
-
-
-(s/fdef index/num-of-type-changes
   :args (s/cat :context :blaze.db.index/context
                :tid :blaze.db/tid
+               :id :blaze.db/id-bytes
                :start-t :blaze.db/t
-               :since-t :blaze.db/t)
-  :ret nat-int?)
-
-
-(s/fdef index/num-of-system-changes
-  :args (s/cat :context :blaze.db.index/context
-               :start-t :blaze.db/t
-               :since-t :blaze.db/t)
+               :end-t :blaze.db/t)
   :ret nat-int?)
 
 
 (s/fdef index/type-list
   :args (s/cat :context :blaze.db.index/context
+               :raoi :blaze.db/kv-iterator
                :tid :blaze.db/tid
                :start-id (s/nilable bytes?)
                :t :blaze.db/t)
@@ -84,6 +66,8 @@
 
 (s/fdef index/compartment-list
   :args (s/cat :context :blaze.db.index/context
+               :cri :blaze.db/kv-iterator
+               :raoi :blaze.db/kv-iterator
                :compartment :blaze.db/compartment
                :tid :blaze.db/tid
                :start-id (s/nilable bytes?)
@@ -93,10 +77,11 @@
 
 (s/fdef index/instance-history
   :args (s/cat :context :blaze.db.index/context
+               :raoi :blaze.db/kv-iterator
                :tid :blaze.db/tid
                :id :blaze.db/id-bytes
                :start-t :blaze.db/t
-               :since-t :blaze.db/t)
+               :end-t :blaze.db/t)
   :ret (s/coll-of :blaze/resource))
 
 
@@ -105,7 +90,7 @@
                :tid :blaze.db/tid
                :start-t :blaze.db/t
                :start-id (s/nilable bytes?)
-               :since-t :blaze.db/t)
+               :end-t :blaze.db/t)
   :ret (s/coll-of :blaze/resource))
 
 
@@ -114,7 +99,7 @@
                :start-t :blaze.db/t
                :start-tid (s/nilable :blaze.db/tid)
                :start-id (s/nilable bytes?)
-               :since-t :blaze.db/t)
+               :end-t :blaze.db/t)
   :ret (s/coll-of :blaze/resource))
 
 
