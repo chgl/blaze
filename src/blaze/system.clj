@@ -5,7 +5,7 @@
   The specs at the beginning of the namespace describe the config which has to
   be given to `init!``. The server port has a default of `8080`."
   (:require
-    [clojure.spec.alpha :as s]
+    [clojure.java.io :as io]
     [clojure.string :as str]
     [clojure.walk :refer [postwalk]]
     [blaze.executors :as ex]
@@ -13,8 +13,7 @@
     [clojure.tools.reader.edn :as edn]
     [integrant.core :as ig]
     [spec-coerce.alpha :refer [coerce]]
-    [taoensso.timbre :as log]
-    [clojure.java.io :as io])
+    [taoensso.timbre :as log])
   (:import
     [java.io PushbackReader]))
 
@@ -142,6 +141,11 @@
 
 
 (defn- feature-enabled?
+  "Determines whether a feature is enabled or not.
+
+  Each feature has an environment variable name specified under :toggle. The
+  value of the environment variable is read here and checked to be truthy or
+  not. It is truthy if it is not blank and is not the word `false`."
   {:arglists '([env feature])}
   [env {:keys [toggle]}]
   (let [value (get env toggle)]
@@ -149,6 +153,7 @@
 
 
 (defn- merge-features
+  "Merges feature config portions of enabled features into `base-config`."
   {:arglists '([blaze-edn env])}
   [{:keys [base-config features]} env]
   (reduce
@@ -161,9 +166,6 @@
     base-config
     features))
 
-
-(s/fdef init!
-  :args (s/cat :env any?))
 
 (defn init!
   [{level "LOG_LEVEL" :or {level "info"} :as env}]

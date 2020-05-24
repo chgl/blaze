@@ -147,5 +147,4 @@
 
 
 (defn db [kv-store resource-cache node t]
-  (->Db #:blaze.db{:kv-store kv-store :resource-cache resource-cache}
-        node t t))
+  (->Db #:blaze.db{:kv-store kv-store :resource-cache resource-cache} node t t))

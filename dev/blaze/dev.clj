@@ -6,6 +6,7 @@
     [blaze.db.kv.rocksdb-spec]
     [blaze.spec]
     [blaze.system :as system]
+    [blaze.system-spec]
     [clojure.repl :refer [pst]]
     [clojure.spec.test.alpha :as st]
     [clojure.tools.namespace.repl :refer [refresh]]
@@ -101,12 +102,27 @@
   ;;  5 % mk-resource
 
 
-  ;; 140 ms
+  ;; 180 ms
   (quick-bench (count (into [] (d/list-resources db "Specimen"))))
   (bench (count (into [] (d/list-resources db "Specimen"))))
   (time (dotimes [_ 10] (count (into [] (d/list-resources db "Specimen")))))
-  (time (dotimes [_ 1000] (count (into [] (d/list-resources db "Patient")))))
+  (time (dotimes [_ 10] (count (into [] (d/list-resources db "Patient")))))
+  (time (dotimes [_ 100] (count (into [] (d/list-resources db "Specimen")))))
+  (time (dotimes [_ 100000] (count (into [] (take 10) (d/list-resources db "Patient")))))
 
-  (:id (first (into [] (d/list-resources db "Specimen"))))
+  ;; 3 versions history
+  ;; ----------------
+  ;; 37 % read key
+  ;; 15 % read value
+  ;; 24 % next
+  ;;  3 % valid?
+  ;;  2 % create id
+  ;;  5 % id equals
+  ;;  3 % conj + delete?
+  ;;  3 % create resource
+
+  (+ 37 15 24 3 2 5 3)
+
+  (double (/ 5000 27))
 
   )

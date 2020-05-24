@@ -24,17 +24,17 @@
 
 ;; ---- Sizes of Byte Arrays --------------------------------------------------
 
-(def ^:const ^long hash-size 32)
-(def ^:const ^long hash-prefix-size 4)
-(def ^:const ^long c-hash-size 4)
-(def ^:const ^long v-hash-size 4)
-(def ^:const ^long unit-hash-size 4)
-(def ^:const ^long cid-size 4)
-(def ^:const ^long tid-size 4)
-(def ^:const ^long t-size 8)
-(def ^:const ^long state-size 8)
-(def ^:const ^long tx-time-size 8)
-(def ^:const ^long max-id-size 64)
+(def ^:const ^int hash-size 32)
+(def ^:const ^int hash-prefix-size 4)
+(def ^:const ^int c-hash-size Integer/BYTES)
+(def ^:const ^int v-hash-size Integer/BYTES)
+(def ^:const ^int unit-hash-size 4)
+(def ^:const ^int cid-size Integer/BYTES)
+(def ^:const ^int tid-size Integer/BYTES)
+(def ^:const ^int t-size Long/BYTES)
+(def ^:const ^int state-size Long/BYTES)
+(def ^:const ^int tx-time-size Long/BYTES)
+(def ^:const ^int max-id-size 64)
 
 
 
@@ -69,8 +69,11 @@
   (.getBytes id iso-8859-1))
 
 
-(defn id [^bytes id-bytes]
-  (String. id-bytes iso-8859-1))
+(defn id
+  ([^bytes id-bytes]
+   (String. id-bytes iso-8859-1))
+  ([^bytes id-bytes ^long offset ^long length]
+   (String. id-bytes offset length iso-8859-1)))
 
 
 
@@ -441,7 +444,6 @@
           (.get vb hash)
           hash)
         (.getLong vb)))))
-
 
 
 ;; ---- TypeAsOf Index --------------------------------------------------------

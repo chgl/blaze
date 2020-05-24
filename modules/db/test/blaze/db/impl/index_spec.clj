@@ -2,23 +2,9 @@
   (:require
     [blaze.db.impl.codec-spec]
     [blaze.db.impl.index :as index]
+    [blaze.db.impl.index.spec]
     [blaze.db.impl.search-param-spec]
-    [clojure.spec.alpha :as s])
-  (:import
-    [blaze.db.impl.index.resource Hash]
-    [com.github.benmanes.caffeine.cache LoadingCache]))
-
-
-(s/def :blaze.db/hash
-  #(instance? Hash %))
-
-
-(s/def :blaze.db/resource-cache
-  #(instance? LoadingCache %))
-
-
-(s/def :blaze.db.index/context
-  (s/keys :req [:blaze.db/kv-store :blaze.db/resource-cache]))
+    [clojure.spec.alpha :as s]))
 
 
 (s/fdef index/tx
@@ -53,15 +39,6 @@
                :start-t :blaze.db/t
                :end-t :blaze.db/t)
   :ret nat-int?)
-
-
-(s/fdef index/type-list
-  :args (s/cat :context :blaze.db.index/context
-               :raoi :blaze.db/kv-iterator
-               :tid :blaze.db/tid
-               :start-id (s/nilable bytes?)
-               :t :blaze.db/t)
-  :ret (s/coll-of :blaze/resource))
 
 
 (s/fdef index/compartment-list

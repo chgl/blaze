@@ -4,6 +4,7 @@
     [blaze.db.impl.bytes :as bytes]
     [blaze.db.impl.codec :as codec]
     [blaze.db.impl.index.resource :as resource :refer [mk-resource]]
+    [blaze.db.impl.index.type-list :as type-list]
     [blaze.db.impl.iterators :as i]
     [blaze.db.impl.search-param :as search-param]
     [blaze.db.impl.util :as util]
@@ -16,7 +17,8 @@
     [clojure.lang IReduceInit]
     [java.io Closeable]
     [java.util HashMap Map]
-    [blaze.db.impl.codec ResourceAsOfKV]))
+    [blaze.db.impl.codec ResourceAsOfKV]
+    [java.nio ByteBuffer]))
 
 
 (set! *warn-on-reflection* true)
@@ -157,27 +159,14 @@
 
 ;; ---- Type-Level Functions ------------------------------------------------
 
-(defn- type-list-start-key [tid start-id t]
-  (if start-id
-    (codec/resource-as-of-key tid start-id t)
-    (codec/resource-as-of-key tid)))
-
-
 (defn type-list
   "Returns a reducible collection of all resources of type with `tid` ordered
   by resource id.
 
   The list starts at the optional `start-id`."
   ^IReduceInit
-  [{:blaze.db/keys [kv-store resource-cache]} raoi tid start-id t]
-  (coll/eduction
-    (comp
-      (take-while #(= ^int tid (.tid ^ResourceAsOfKV %)))
-      (filter #(<= (.t ^ResourceAsOfKV %) ^long t))
-      (coll/first-by #(.id ^ResourceAsOfKV %))
-      (map #(resource**** kv-store resource-cache %))
-      (remove deleted?))
-    (i/kvs raoi (codec/resource-as-of-kv-decoder) (type-list-start-key tid start-id t))))
+  [context raoi tid start-id t]
+  (type-list/type-list context raoi tid start-id t))
 
 
 (defn- non-deleted-resource [context raoi tid id t]

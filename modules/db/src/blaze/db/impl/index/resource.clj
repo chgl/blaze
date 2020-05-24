@@ -26,6 +26,9 @@
     (Arrays/hashCode ^bytes hash)))
 
 
+(deftype IdHashStateT [id hash ^long state ^long t])
+
+
 (defn tx [kv-store t]
   (when-let [v (kv/get kv-store :tx-success-index (codec/t-key t))]
     (codec/decode-tx v t)))

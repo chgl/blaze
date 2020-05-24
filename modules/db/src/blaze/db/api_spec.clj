@@ -7,7 +7,9 @@
     [blaze.fhir.spec]
     [clojure.spec.alpha :as s]
     [cognitect.anomalies :as anom]
-    [manifold.deferred :refer [deferred?]]))
+    [manifold.deferred :refer [deferred?]])
+  (:import
+    [com.github.benmanes.caffeine.cache LoadingCache]))
 
 
 (s/def :blaze.db/op
@@ -65,6 +67,10 @@
 
 (s/def :blaze.db/node
   #(satisfies? p/Node %))
+
+
+(s/def :blaze.db/resource-cache
+  #(instance? LoadingCache %))
 
 
 (s/def :blaze.db/query
