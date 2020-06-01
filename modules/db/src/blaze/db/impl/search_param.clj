@@ -34,13 +34,17 @@
   (-compile-values search-param values))
 
 
-(defn keys [search-param snapshot svri tid compiled-values]
+(defn keys
+  "Returns a reducible collection of `[prefix id hash-prefix]` triples."
+  [search-param snapshot svri tid compiled-values]
   (coll/eduction
     (mapcat #(-keys search-param snapshot svri tid %))
     compiled-values))
 
 
-(defn compartment-keys [search-param csvri compartment tid compiled-values]
+(defn compartment-keys
+  "Returns a reducible collection of `[prefix id hash-prefix]` triples."
+  [search-param csvri compartment tid compiled-values]
   (coll/eduction
     (mapcat #(-compartment-keys search-param csvri compartment tid %))
     compiled-values))
@@ -109,9 +113,11 @@
 
 
 (defn- prefix-seek [iter key]
-  (when-let [k (kv/seek! iter key)]
-    (when (bytes/starts-with? k key)
-      k)))
+  (kv/seek! iter key)
+  (when (kv/valid? iter)
+    (let [k (kv/key iter)]
+      (when (bytes/starts-with? k key)
+        k))))
 
 
 (defn- seek-value [snapshot tid id hash c-hash value]
@@ -194,7 +200,7 @@
          (bytes/<= (codec/date-lb-ub->ub v) ub))))
 
 
-(defrecord SearchParamDate [name url type code c-hash expression]
+(defrecord SearchParamDate [name url type base code c-hash expression]
   SearchParam
   (-compile-values [_ values]
     (vec values))
@@ -232,9 +238,10 @@
           :eq (and (bytes/<= (date-lb value) (codec/date-lb-ub->lb v))
                    (bytes/<= (codec/date-lb-ub->ub v) (date-ub value)))))))
 
-  (-index-entries [_ resolver hash {type :resourceType id :id :as resource} linked-compartments]
+  (-index-entries [_ resolver hash resource linked-compartments]
     (when-ok [values (fhir-path/eval resolver expression resource)]
-      (let [tid (codec/tid type)
+      (let [{type :resourceType id :id} resource
+            tid (codec/tid type)
             id-bytes (codec/id-bytes id)]
         (into
           []
@@ -321,7 +328,7 @@
   (log/warn (format-skip-indexing-msg value url "string")))
 
 
-(defrecord SearchParamString [name url type code c-hash expression]
+(defrecord SearchParamString [name url type base code c-hash expression]
   SearchParam
   (-compile-values [_ values]
     (mapv (comp codec/string normalize-string) values))
@@ -339,9 +346,10 @@
     ;; TODO: handle other values
     (seek-value snapshot tid id hash c-hash compiled-value))
 
-  (-index-entries [_ resolver hash {type :resourceType id :id :as resource} linked-compartments]
+  (-index-entries [_ resolver hash resource linked-compartments]
     (when-ok [values (fhir-path/eval resolver expression resource)]
-      (let [tid (codec/tid type)
+      (let [{type :resourceType id :id} resource
+            tid (codec/tid type)
             id-bytes (codec/id-bytes id)]
         (into
           []
@@ -482,8 +490,69 @@
   (log/warn (format-skip-indexing-msg value url "token")))
 
 
+(defn- index-token-entries
+  [url code c-hash hash resource linked-compartments values]
+  (let [{type :resourceType id :id} resource
+        tid (codec/tid type)
+        id-bytes (codec/id-bytes id)]
+    (into
+      []
+      (mapcat
+        (partial
+          token-index-entries
+          url
+          (fn search-param-token-entry [values]
+            (log/trace "search-param-value-entry" "token" code type id (codec/hex hash))
+            (into
+              (into
+                [[:resource-value-index
+                  (codec/resource-value-key
+                    tid
+                    id-bytes
+                    hash
+                    c-hash)
+                  (bytes/concat values)]]
+                (map
+                  (fn [{co-c-hash :c-hash co-res-id :res-id}]
+                    [:compartment-resource-value-index
+                     (codec/compartment-resource-value-key
+                       co-c-hash
+                       co-res-id
+                       tid
+                       id-bytes
+                       hash
+                       c-hash)
+                     (bytes/concat values)]))
+                linked-compartments)
+              (mapcat
+                (fn [value]
+                  (cons
+                    [:search-param-value-index
+                     (codec/search-param-value-key
+                       c-hash
+                       tid
+                       value
+                       id-bytes
+                       hash)
+                     bytes/empty]
+                    (map
+                      (fn [{co-c-hash :c-hash co-res-id :res-id}]
+                        [:compartment-search-param-value-index
+                         (codec/compartment-search-param-value-key
+                           co-c-hash
+                           co-res-id
+                           c-hash
+                           tid
+                           value
+                           id-bytes
+                           hash)
+                         bytes/empty])
+                      linked-compartments))))
+              values))))
+      values)))
 
-(defrecord SearchParamToken [name url type code c-hash expression]
+
+(defrecord SearchParamToken [name url type base code c-hash expression]
   SearchParam
   (-compile-values [_ values]
     (mapv codec/v-hash values))
@@ -522,65 +591,10 @@
                       (rest res))))))))
         values)))
 
-  (-index-entries [_ resolver hash {type :resourceType id :id :as resource} linked-compartments]
+  (-index-entries [_ resolver hash resource linked-compartments]
     (when-ok [values (fhir-path/eval resolver expression resource)]
-      (let [tid (codec/tid type)
-            id-bytes (codec/id-bytes id)]
-        (into
-          []
-          (mapcat
-            (partial
-              token-index-entries
-              url
-              (fn search-param-token-entry [values]
-                (log/trace "search-param-value-entry" "token" code type id (codec/hex hash))
-                (into
-                  (into
-                    [[:resource-value-index
-                      (codec/resource-value-key
-                        tid
-                        id-bytes
-                        hash
-                        c-hash)
-                      (bytes/concat values)]]
-                    (map
-                      (fn [{co-c-hash :c-hash co-res-id :res-id}]
-                        [:compartment-resource-value-index
-                         (codec/compartment-resource-value-key
-                           co-c-hash
-                           co-res-id
-                           tid
-                           id-bytes
-                           hash
-                           c-hash)
-                         (bytes/concat values)]))
-                    linked-compartments)
-                  (mapcat
-                    (fn [value]
-                      (cons
-                        [:search-param-value-index
-                         (codec/search-param-value-key
-                           c-hash
-                           tid
-                           value
-                           id-bytes
-                           hash)
-                         bytes/empty]
-                        (map
-                          (fn [{co-c-hash :c-hash co-res-id :res-id}]
-                            [:compartment-search-param-value-index
-                             (codec/compartment-search-param-value-key
-                               co-c-hash
-                               co-res-id
-                               c-hash
-                               tid
-                               value
-                               id-bytes
-                               hash)
-                             bytes/empty])
-                          linked-compartments))))
-                  values))))
-          values)))))
+      (index-token-entries url code c-hash hash resource linked-compartments
+                           values))))
 
 
 
@@ -605,7 +619,7 @@
   (log/warn (format-skip-indexing-msg value url "quantity")))
 
 
-(defrecord SearchParamQuantity [name url type code c-hash expression]
+(defrecord SearchParamQuantity [name url type base code c-hash expression]
   SearchParam
   (-compile-values [_ values]
     (mapv
@@ -628,9 +642,10 @@
     (when-let [v (get-value snapshot tid id hash c-hash)]
       (bytes/= compiled-value v)))
 
-  (-index-entries [_ resolver hash {type :resourceType id :id :as resource} linked-compartments]
+  (-index-entries [_ resolver hash resource linked-compartments]
     (when-ok [values (fhir-path/eval resolver expression resource)]
-      (let [tid (codec/tid type)
+      (let [{type :resourceType id :id} resource
+            tid (codec/tid type)
             id-bytes (codec/id-bytes id)]
         (into
           []
@@ -662,31 +677,31 @@
 
 
 (defmethod search-param "date"
-  [{:keys [name url type code expression]}]
+  [{:keys [name url type base code expression]}]
   (when expression
     (when-ok [expression (fhir-path/compile expression)]
-      (->SearchParamDate name url type code (codec/c-hash code) expression))))
+      (->SearchParamDate name url type base code (codec/c-hash code) expression))))
 
 
 (defmethod search-param "string"
-  [{:keys [name url type code expression]}]
+  [{:keys [name url type base code expression]}]
   (when expression
     (when-ok [expression (fhir-path/compile expression)]
-      (->SearchParamString name url type code (codec/c-hash code) expression))))
+      (->SearchParamString name url type base code (codec/c-hash code) expression))))
 
 
 (defmethod search-param "token"
-  [{:keys [name url type code expression]}]
+  [{:keys [name url type base code expression]}]
   (when expression
     (when-ok [expression (fhir-path/compile expression)]
-      (->SearchParamToken name url type code (codec/c-hash code) expression))))
+      (->SearchParamToken name url type base code (codec/c-hash code) expression))))
 
 
 (defmethod search-param "reference"
-  [{:keys [name url type code expression]}]
+  [{:keys [name url type base code expression]}]
   (when expression
     (when-ok [expression (fhir-path/compile expression)]
-      (->SearchParamToken name url type code (codec/c-hash code) expression))))
+      (->SearchParamToken name url type base code (codec/c-hash code) expression))))
 
 
 ;; TODO: do we need to index composites?
@@ -694,16 +709,16 @@
 
 
 (defmethod search-param "quantity"
-  [{:keys [name url type code expression]}]
+  [{:keys [name url type base code expression]}]
   (when-ok [expression (fhir-path/compile expression)]
-    (->SearchParamQuantity name url type code (codec/c-hash code) expression)))
+    (->SearchParamQuantity name url type base code (codec/c-hash code) expression)))
 
 
 (defmethod search-param "uri"
-  [{:keys [name url type code expression]}]
+  [{:keys [name url type base code expression]}]
   (when expression
     (when-ok [expression (fhir-path/compile expression)]
-      (->SearchParamToken name url type code (codec/c-hash code) expression))))
+      (->SearchParamToken name url type base code (codec/c-hash code) expression))))
 
 
 (defmethod search-param :default

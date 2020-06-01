@@ -12,16 +12,22 @@
 
 
 (defprotocol SearchParamRegistry
-  (-get [_ code type])
+  (-get [_ code] [_ code type])
   (-list-by-type [_ type])
   (-linked-compartments [_ resource]))
 
 
-(defn get [search-param-registry code type]
-  (-get search-param-registry code type))
+(defn get
+  "Returns the search parameter with `code` and optional `type`."
+  ([search-param-registry code]
+   (-get search-param-registry code))
+  ([search-param-registry code type]
+   (-get search-param-registry code type)))
 
 
-(defn list-by-type [search-param-registry type]
+(defn list-by-type
+  "Returns a seq of search params of `type`."
+  [search-param-registry type]
   (-list-by-type search-param-registry type))
 
 
@@ -36,6 +42,9 @@
 
 (deftype MemSearchParamRegistry [index compartment-index]
   SearchParamRegistry
+  (-get [_ code]
+    (get-in index ["Resource" code]))
+
   (-get [_ code type]
     (or (get-in index [type code])
         (get-in index ["Resource" code])))
@@ -109,7 +118,8 @@
 
 (defn init-mem-search-param-registry []
   (let [bundle (read-bundle "blaze/db/impl/search-parameters.json")]
-    (when-ok [index (transduce (map :resource) (completing index-search-param) {} (:entry bundle))]
+    (when-ok [index (transduce (map :resource) (completing index-search-param)
+                               {} (:entry bundle))]
       (->MemSearchParamRegistry index (index-compartments index)))))
 
 

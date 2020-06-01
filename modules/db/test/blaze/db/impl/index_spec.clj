@@ -1,8 +1,10 @@
 (ns blaze.db.impl.index-spec
   (:require
     [blaze.db.impl.codec-spec]
+    [blaze.db.kv-spec]
     [blaze.db.impl.index :as index]
     [blaze.db.impl.index.spec]
+    [blaze.db.impl.iterators-spec]
     [blaze.db.impl.search-param-spec]
     [clojure.spec.alpha :as s]))
 
@@ -16,29 +18,9 @@
   :args (s/cat :kv-store :blaze.db/kv-store :hash :blaze.db/hash))
 
 
-(s/fdef index/hash-state-t
-  :args (s/cat :resource-as-of-iter :blaze.db/kv-iterator
-               :tid :blaze.db/tid
-               :id :blaze.db/id-bytes
-               :t :blaze.db/t)
-  :ret (s/nilable (s/tuple :blaze.resource/hash :blaze.db/state :blaze.db/t)))
-
-
-(s/fdef index/resource
-  :args (s/cat :context :blaze.db.index/context
-               :tid :blaze.db/tid
-               :id :blaze.db/id-bytes
-               :t :blaze.db/t)
-  :ret (s/nilable :blaze/resource))
-
-
-(s/fdef index/num-of-instance-changes
-  :args (s/cat :context :blaze.db.index/context
-               :tid :blaze.db/tid
-               :id :blaze.db/id-bytes
-               :start-t :blaze.db/t
-               :end-t :blaze.db/t)
-  :ret nat-int?)
+(s/fdef index/t-by-instant
+  :args (s/cat :snapshot :blaze.db/kv-snapshot :instant inst?)
+  :ret (s/nilable :blaze.db/t))
 
 
 (s/fdef index/compartment-list
@@ -49,34 +31,6 @@
                :tid :blaze.db/tid
                :start-id (s/nilable bytes?)
                :t :blaze.db/t)
-  :ret (s/coll-of :blaze/resource))
-
-
-(s/fdef index/instance-history
-  :args (s/cat :context :blaze.db.index/context
-               :raoi :blaze.db/kv-iterator
-               :tid :blaze.db/tid
-               :id :blaze.db/id-bytes
-               :start-t :blaze.db/t
-               :end-t :blaze.db/t)
-  :ret (s/coll-of :blaze/resource))
-
-
-(s/fdef index/type-history
-  :args (s/cat :context :blaze.db.index/context
-               :tid :blaze.db/tid
-               :start-t :blaze.db/t
-               :start-id (s/nilable bytes?)
-               :end-t :blaze.db/t)
-  :ret (s/coll-of :blaze/resource))
-
-
-(s/fdef index/system-history
-  :args (s/cat :context :blaze.db.index/context
-               :start-t :blaze.db/t
-               :start-tid (s/nilable :blaze.db/tid)
-               :start-id (s/nilable bytes?)
-               :end-t :blaze.db/t)
   :ret (s/coll-of :blaze/resource))
 
 
@@ -110,10 +64,3 @@
                :clauses :blaze.db.index.query/clauses
                :t :blaze.db/t)
   :ret (s/coll-of :blaze/resource))
-
-
-(s/fdef index/type-total
-  :args (s/cat :context :blaze.db.index/context
-               :tid :blaze.db/tid
-               :t :blaze.db/t)
-  :ret nat-int?)

@@ -8,7 +8,7 @@
   :blaze.db.kv.rocksdb/stats-collector
   {:stats #blaze/ref :blaze.db.kv.rocksdb/stats}
 
-  [#_:blaze.db.kv/mem :blaze.db.kv/rocksdb :blaze.db/kv-store]
+  [:blaze.db.kv/rocksdb :blaze.db/kv-store]
   {:dir #blaze/cfg ["DB_DIR" string? "db"]
    :block-cache #blaze/ref :blaze.db.kv.rocksdb/block-cache
    :stats #blaze/ref :blaze.db.kv.rocksdb/stats

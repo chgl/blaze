@@ -68,8 +68,8 @@ In Crux an entity can have multiple documents over time. Every time a new docume
 | TxError | t | anomaly |
 | TByInstant | inst-ms (desc) | t |
 | ResourceAsOf | tid id t | hash, state |
-| TypeAsOf | tid t id | - |
-| SystemAsOf | t tid id | - |
+| TypeAsOf | tid t id | hash, state |
+| SystemAsOf | t tid id | hash, state |
 | TypeStats | tid t | total, num-changes |
 | SystemStats | t | total, num-changes |
 

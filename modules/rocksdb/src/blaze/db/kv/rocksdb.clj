@@ -29,47 +29,26 @@
 
 (deftype RocksKvIterator [^RocksIterator i]
   kv/KvIterator
-  (-seek [_ target]
-    (.seek i ^bytes target)
-    (iterator->key i))
+  (-valid [_]
+    (.isValid i))
 
-  (-seek' [_ target]
+  (-seek-to-first [_]
+    (.seekToFirst i))
+
+  (-seek-to-last [_]
+    (.seekToLast i))
+
+  (-seek [_ target]
     (.seek i ^bytes target))
 
   (-seek-for-prev [_ target]
-    (.seekForPrev i ^bytes target)
-    (iterator->key i))
-
-  (-seek-for-prev' [_ target]
     (.seekForPrev i ^bytes target))
 
-  (-seek-to-first [_]
-    (.seekToFirst i)
-    (iterator->key i))
-
-  (-seek-to-first' [_]
-    (.seekToFirst i))
-
-  (seek-to-last [_]
-    (.seekToLast i)
-    (iterator->key i))
-
   (-next [_]
-    (.next i)
-    (iterator->key i))
-
-  (-next' [_]
     (.next i))
 
   (-prev [_]
-    (.prev i)
-    (iterator->key i))
-
-  (-prev' [_]
     (.prev i))
-
-  (-valid? [_]
-    (.isValid i))
 
   (-key [_ byte-buffer]
     (.key i byte-buffer))

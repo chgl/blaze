@@ -81,17 +81,18 @@
         [[:put "Patient" "0" (codec/hash patient-0)]])
       (into
         (codec/tx-success-entries 1 now)
-        [[:resource-as-of-index
-          (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 1)
-          (codec/resource-as-of-value (codec/hash patient-0) (codec/state 1 :put))]
-         [:type-as-of-index
-          (codec/type-as-of-key tid-patient 1 (codec/id-bytes "0"))
-          bytes/empty]
-         [:system-as-of-index
-          (codec/system-as-of-key 1 tid-patient (codec/id-bytes "0"))
-          bytes/empty]
-         (type-stats/entry tid-patient 1 {:total 1 :num-changes 1})
-         (system-stats/entry 1 {:total 1 :num-changes 1})])))
+        (let [value (codec/resource-as-of-value (codec/hash patient-0) (codec/state 1 :put))]
+          [[:resource-as-of-index
+            (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 1)
+            value]
+           [:type-as-of-index
+            (codec/type-as-of-key tid-patient 1 (codec/id-bytes "0"))
+            value]
+           [:system-as-of-index
+            (codec/system-as-of-key 1 tid-patient (codec/id-bytes "0"))
+            value]
+           (type-stats/entry tid-patient 1 {:total 1 :num-changes 1})
+           (system-stats/entry 1 {:total 1 :num-changes 1})]))))
 
   (testing "adding a second version of a patient to a store containing it already"
     (is-entries=
@@ -100,17 +101,18 @@
         [[:put "Patient" "0" (codec/hash patient-0-v2)]])
       (into
         (codec/tx-success-entries 2 now)
-        [[:resource-as-of-index
-          (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 2)
-          (codec/resource-as-of-value (codec/hash patient-0-v2) (codec/state 2 :put))]
-         [:type-as-of-index
-          (codec/type-as-of-key tid-patient 2 (codec/id-bytes "0"))
-          bytes/empty]
-         [:system-as-of-index
-          (codec/system-as-of-key 2 tid-patient (codec/id-bytes "0"))
-          bytes/empty]
-         (type-stats/entry tid-patient 2 {:total 1 :num-changes 2})
-         (system-stats/entry 2 {:total 1 :num-changes 2})])))
+        (let [value (codec/resource-as-of-value (codec/hash patient-0-v2) (codec/state 2 :put))]
+          [[:resource-as-of-index
+            (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 2)
+            value]
+           [:type-as-of-index
+            (codec/type-as-of-key tid-patient 2 (codec/id-bytes "0"))
+            value]
+           [:system-as-of-index
+            (codec/system-as-of-key 2 tid-patient (codec/id-bytes "0"))
+            value]
+           (type-stats/entry tid-patient 2 {:total 1 :num-changes 2})
+           (system-stats/entry 2 {:total 1 :num-changes 2})]))))
 
   (testing "adding a second version of a patient to a store containing it already incl. matcher"
     (is-entries=
@@ -119,17 +121,18 @@
         [[:put "Patient" "0" (codec/hash patient-0-v2) 1]])
       (into
         (codec/tx-success-entries 2 now)
-        [[:resource-as-of-index
-          (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 2)
-          (codec/resource-as-of-value (codec/hash patient-0-v2) (codec/state 2 :put))]
-         [:type-as-of-index
-          (codec/type-as-of-key tid-patient 2 (codec/id-bytes "0"))
-          bytes/empty]
-         [:system-as-of-index
-          (codec/system-as-of-key 2 tid-patient (codec/id-bytes "0"))
-          bytes/empty]
-         (type-stats/entry tid-patient 2 {:total 1 :num-changes 2})
-         (system-stats/entry 2 {:total 1 :num-changes 2})])))
+        (let [value (codec/resource-as-of-value (codec/hash patient-0-v2) (codec/state 2 :put))]
+          [[:resource-as-of-index
+            (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 2)
+            value]
+           [:type-as-of-index
+            (codec/type-as-of-key tid-patient 2 (codec/id-bytes "0"))
+            value]
+           [:system-as-of-index
+            (codec/system-as-of-key 2 tid-patient (codec/id-bytes "0"))
+            value]
+           (type-stats/entry tid-patient 2 {:total 1 :num-changes 2})
+           (system-stats/entry 2 {:total 1 :num-changes 2})]))))
 
   (testing "deleting the existing patient"
     (is-entries=
@@ -138,18 +141,19 @@
         [[:delete "Patient" "0" (codec/hash (codec/deleted-resource "Patient" "0"))]])
       (into
         (codec/tx-success-entries 2 now)
-        [[:resource-as-of-index
-          (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 2)
-          (codec/resource-as-of-value (codec/hash (codec/deleted-resource "Patient" "0"))
-                                      (codec/state 2 :delete))]
-         [:type-as-of-index
-          (codec/type-as-of-key tid-patient 2 (codec/id-bytes "0"))
-          bytes/empty]
-         [:system-as-of-index
-          (codec/system-as-of-key 2 tid-patient (codec/id-bytes "0"))
-          bytes/empty]
-         (type-stats/entry tid-patient 2 {:total 0 :num-changes 2})
-         (system-stats/entry 2 {:total 0 :num-changes 2})])))
+        (let [value (codec/resource-as-of-value (codec/hash (codec/deleted-resource "Patient" "0"))
+                                                (codec/state 2 :delete))]
+          [[:resource-as-of-index
+            (codec/resource-as-of-key tid-patient (codec/id-bytes "0") 2)
+            value]
+           [:type-as-of-index
+            (codec/type-as-of-key tid-patient 2 (codec/id-bytes "0"))
+            value]
+           [:system-as-of-index
+            (codec/system-as-of-key 2 tid-patient (codec/id-bytes "0"))
+            value]
+           (type-stats/entry tid-patient 2 {:total 0 :num-changes 2})
+           (system-stats/entry 2 {:total 0 :num-changes 2})]))))
 
   (testing "adding a second patient to a store containing already one"
     (is-entries=
@@ -158,17 +162,18 @@
         [[:put "Patient" "1" (codec/hash patient-1)]])
       (into
         (codec/tx-success-entries 2 now)
-        [[:resource-as-of-index
-          (codec/resource-as-of-key tid-patient (codec/id-bytes "1") 2)
-          (codec/resource-as-of-value (codec/hash patient-1) (codec/state 1 :put))]
-         [:type-as-of-index
-          (codec/type-as-of-key tid-patient 2 (codec/id-bytes "1"))
-          bytes/empty]
-         [:system-as-of-index
-          (codec/system-as-of-key 2 tid-patient (codec/id-bytes "1"))
-          bytes/empty]
-         (type-stats/entry tid-patient 2 {:total 2 :num-changes 2})
-         (system-stats/entry 2 {:total 2 :num-changes 2})])))
+        (let [value (codec/resource-as-of-value (codec/hash patient-1) (codec/state 1 :put))]
+          [[:resource-as-of-index
+            (codec/resource-as-of-key tid-patient (codec/id-bytes "1") 2)
+            value]
+           [:type-as-of-index
+            (codec/type-as-of-key tid-patient 2 (codec/id-bytes "1"))
+            value]
+           [:system-as-of-index
+            (codec/system-as-of-key 2 tid-patient (codec/id-bytes "1"))
+            value]
+           (type-stats/entry tid-patient 2 {:total 2 :num-changes 2})
+           (system-stats/entry 2 {:total 2 :num-changes 2})]))))
 
   (testing "update conflict"
     (is-entries=

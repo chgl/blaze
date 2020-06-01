@@ -2,9 +2,11 @@
   (:require
     [blaze.db.impl.codec :as codec]
     [blaze.db.search-param-registry :as sr]
+    [blaze.db.search-param-registry-spec]
     [clojure.spec.test.alpha :as st]
-    [clojure.test :as test :refer [deftest]]
-    [juxt.iota :refer [given]]))
+    [clojure.test :as test :refer [deftest testing]]
+    [juxt.iota :refer [given]])
+  (:refer-clojure :exclude [get]))
 
 
 (defn fixture [f]
@@ -17,6 +19,13 @@
 
 
 (def search-param-registry (sr/init-mem-search-param-registry))
+
+
+(deftest get
+  (testing "_id"
+    (given (sr/get search-param-registry "_id")
+      :type := "token"
+      :url := "http://hl7.org/fhir/SearchParameter/Resource-id")))
 
 
 (deftest linked-compartments

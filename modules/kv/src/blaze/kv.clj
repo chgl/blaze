@@ -1,4 +1,4 @@
-(ns blaze.db.kv
+(ns blaze.kv
   "Protocols for key-value store backend implementations."
   (:refer-clojure :exclude [get key]))
 
@@ -145,3 +145,4 @@
    (-put store entries))
   ([store key value]
    (-put store key value)))
+

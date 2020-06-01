@@ -61,6 +61,10 @@
     (when-ok [clauses (resolve-search-params search-param-registry type clauses)]
       (batch-db/->TypeQuery (codec/tid type) (seq clauses))))
 
+  (-compile-system-query [_ clauses]
+    (when-ok [clauses (resolve-search-params search-param-registry "Resource" clauses)]
+      (batch-db/->SystemQuery (seq clauses))))
+
   (-compile-compartment-query [_ code type clauses]
     (when-ok [clauses (resolve-search-params search-param-registry type clauses)]
       (batch-db/->CompartmentQuery (codec/c-hash code) (codec/tid type) (seq clauses)))))

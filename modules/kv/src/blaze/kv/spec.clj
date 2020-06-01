@@ -1,6 +1,6 @@
-(ns blaze.db.kv-spec
+(ns blaze.kv.spec
   (:require
-    [blaze.db.kv :as kv]
+    [blaze.kv :as kv]
     [clojure.spec.alpha :as s])
   (:import
     [java.nio ByteBuffer]))
@@ -89,3 +89,4 @@
   :args (s/alt
           :entries (s/cat :kv-store :blaze.db/kv-store :entries (s/coll-of :blaze.db.kv/put-entry))
           :kv (s/cat :kv-store :blaze.db/kv-store :key bytes? :value bytes?)))
+

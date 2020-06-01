@@ -6,6 +6,7 @@
     [blaze.db.search-param-registry :as sr]
     [blaze.db.indexer :as indexer]
     [blaze.db.kv :as kv]
+    [blaze.db.kv-spec]
     [blaze.executors :as ex]
     [blaze.module :refer [reg-collector]]
     [cognitect.anomalies :as anom]
@@ -13,7 +14,8 @@
     [manifold.deferred :as md]
     [prometheus.alpha :as prom :refer [defhistogram]]
     [taoensso.nippy :as nippy]
-    [taoensso.timbre :as log]))
+    [taoensso.timbre :as log]
+    [clojure.spec.alpha :as s]))
 
 
 (set! *warn-on-reflection* true)
@@ -98,11 +100,20 @@
   (->ResourceIndexer search-param-registry store executor))
 
 
+(s/def ::executor
+  ex/executor?)
+
+
+(defmethod ig/pre-init-spec ::indexer/resource [_]
+  (s/keys
+    :req-un
+    [:blaze.db/search-param-registry
+     :blaze.db/kv-store
+     ::executor]))
+
+
 (defmethod ig/init-key ::indexer/resource
   [_ {:keys [search-param-registry kv-store executor]}]
-  (assert search-param-registry)
-  (assert kv-store)
-  (assert executor)
   (log/info "Init resource indexer")
   (init-resource-indexer search-param-registry kv-store executor))
 

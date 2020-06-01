@@ -56,6 +56,8 @@
 (defprotocol QueryCompiler
   (-compile-type-query [compiler type clauses])
 
+  (-compile-system-query [compiler clauses])
+
   (-compile-compartment-query [compiler code type clauses]))
 
 

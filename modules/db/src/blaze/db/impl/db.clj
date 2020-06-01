@@ -4,8 +4,8 @@
     [blaze.db.impl.batch-db :as batch-db]
     [blaze.db.impl.codec :as codec]
     [blaze.db.impl.index :as index]
-    [blaze.db.impl.index.system-stats :as system-stats]
-    [blaze.db.impl.index.type-stats :as type-stats]
+    [blaze.db.impl.index.resource :as resource]
+    [blaze.db.impl.index.resource-as-of :as resource-as-of]
     [blaze.db.impl.protocols :as p]
     [blaze.db.kv :as kv])
   (:import
@@ -45,11 +45,13 @@
 
   (-resource-exists? [this type id]
     (if-let [resource (p/-resource this type id)]
-      (not (index/deleted? resource))
+      (not (resource/deleted? resource))
       false))
 
   (-resource [_ type id]
-    (index/resource context (codec/tid type) (codec/id-bytes id) t))
+    (with-open [snapshot (kv/new-snapshot (:blaze.db/kv-store context))
+                raoi (kv/new-iterator snapshot :resource-as-of-index)]
+      (resource-as-of/resource context raoi (codec/tid type) (codec/id-bytes id) t)))
 
 
 
@@ -131,12 +133,23 @@
     (with-open [batch-db (batch-db/new-batch-db context node t)]
       (p/-total-num-of-system-changes batch-db since)))
 
+
+
+  ;; ---- Batch DB ------------------------------------------------------------
+
   (-new-batch-db [_]
     (batch-db/new-batch-db context node t))
+
+
+
+  ;; ---- QueryCompiler -------------------------------------------------------
 
   p/QueryCompiler
   (-compile-type-query [_ type clauses]
     (p/-compile-type-query node type clauses))
+
+  (-compile-system-query [_ clauses]
+    (p/-compile-system-query node clauses))
 
   (-compile-compartment-query [_ code type clauses]
     (p/-compile-compartment-query node code type clauses)))

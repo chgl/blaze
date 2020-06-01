@@ -4,6 +4,7 @@
     [blaze.db.impl.codec-spec]
     [blaze.db.indexer.tx-spec]
     [blaze.db.indexer-spec]
+    [blaze.db.spec]
     [blaze.db.tx-log.local :as tx-log]
     [clojure.spec.alpha :as s])
   (:import

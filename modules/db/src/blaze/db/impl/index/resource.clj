@@ -1,7 +1,8 @@
 (ns blaze.db.impl.index.resource
   (:require
     [blaze.db.impl.codec :as codec]
-    [blaze.db.kv :as kv])
+    [blaze.db.kv :as kv]
+    [blaze.fhir.util :as fhir-util])
   (:import
     [clojure.lang IMeta IPersistentMap]
     [com.github.benmanes.caffeine.cache LoadingCache]
@@ -24,9 +25,6 @@
         (Arrays/equals ^bytes hash ^bytes (.hash ^Hash other)))))
   (hashCode [_]
     (Arrays/hashCode ^bytes hash)))
-
-
-(deftype IdHashStateT [id hash ^long state ^long t])
 
 
 (defn tx [kv-store t]
@@ -153,8 +151,23 @@
   (.hash ^Hash (.hash resource)))
 
 
+(defn deleted? [^Resource resource]
+  (codec/deleted? (.state resource)))
+
+
+(let [kvs (->> (fhir-util/resources)
+               (map (fn [{:keys [type]}] [(codec/tid type) type]))
+               (sort-by first))
+      tid->idx (int-array (map first kvs))
+      idx->type (object-array (map second kvs))]
+  (defn- tid->type [^long tid]
+    (let [idx (Arrays/binarySearch tid->idx tid)]
+      (when (nat-int? idx)
+        (aget idx->type idx)))))
+
+
 (defn mk-resource
-  [{:blaze.db/keys [kv-store resource-cache]} type id hash state t]
-  (Resource. kv-store resource-cache type id (Hash. hash) state t
+  [kv-store resource-cache tid id hash state t]
+  (Resource. kv-store resource-cache (tid->type tid) id (Hash. hash) state t
              (ResourceContentMeta. resource-cache hash t nil)
              nil nil))

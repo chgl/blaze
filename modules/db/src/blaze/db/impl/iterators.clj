@@ -15,7 +15,7 @@
 
 
 (defn- read-key! [iter ^ByteBuffer bb]
-  (when (< buffer-size ^long (kv/-key iter (.clear bb)))
+  (when (< buffer-size ^long (kv/key iter (.clear bb)))
     (throw (BufferOverflowException.))))
 
 
@@ -39,24 +39,24 @@
   ([iter decode]
    (reify IReduceInit
      (reduce [_ rf init]
-       (kv/-seek-to-first' iter)
-       (reduce-keys! iter decode kv/-next' rf init))))
+       (kv/seek-to-first! iter)
+       (reduce-keys! iter decode kv/next! rf init))))
   ([iter decode start-key]
    (reify IReduceInit
      (reduce [_ rf init]
-       (kv/-seek' iter start-key)
-       (reduce-keys! iter decode kv/-next' rf init)))))
+       (kv/seek! iter start-key)
+       (reduce-keys! iter decode kv/next! rf init)))))
 
 
 (defn keys-prev [iter decode start-key]
   (reify IReduceInit
     (reduce [_ rf init]
-      (kv/-seek-for-prev' iter start-key)
-      (reduce-keys! iter decode kv/-prev' rf init))))
+      (kv/seek-for-prev! iter start-key)
+      (reduce-keys! iter decode kv/prev! rf init))))
 
 
 (defn- read-value! [iter ^ByteBuffer bb]
-  (when (< buffer-size ^long (kv/-value iter (.clear bb)))
+  (when (< buffer-size ^long (kv/value iter (.clear bb)))
     (throw (BufferOverflowException.))))
 
 
@@ -76,35 +76,40 @@
 
 
 (defn kvs
-  "Returns a reducible collection of keys and values of `iter`.
+  "Returns a reducible collection of decoded values of `iter`.
+
+  The function `decode` will be called with the key buffer and the value buffer
+  and its result are the decoded values.
 
   Doesn't close the iterator."
   ([iter decode start-key]
    (reify IReduceInit
      (reduce [_ rf init]
-       (kv/-seek' iter start-key)
-       (reduce-kvs! iter decode kv/-next' rf init)))))
+       (kv/seek! iter start-key)
+       (reduce-kvs! iter decode kv/next! rf init)))))
+
+
+(defn- reduce-iter! [iter rf init]
+  (loop [ret init]
+    (if (kv/valid? iter)
+      (let [ret (rf ret iter)]
+        (if (reduced? ret)
+          @ret
+          (do (kv/next! iter) (recur ret))))
+      ret)))
 
 
 (defn iter
   "Returns a reducible collection of `iter` itself.
 
   Doesn't close the iterator."
+  ([iter]
+   (reify IReduceInit
+     (reduce [_ rf init]
+       (kv/seek-to-first! iter)
+       (reduce-iter! iter rf init))))
   ([iter start-key]
    (reify IReduceInit
      (reduce [_ rf init]
-       (kv/-seek' iter start-key)
-       (loop [ret init]
-         (if (kv/valid? iter)
-           (let [ret (rf ret iter)]
-             (if (reduced? ret)
-               @ret
-               (do (kv/-next' iter) (recur ret))))
-           ret))))))
-
-
-(defn key-reader [buf-size]
-  (let [buf (ByteBuffer/allocateDirect buf-size)]
-    (fn [iter]
-      (kv/-key iter (.clear buf))
-      buf)))
+       (kv/seek! iter start-key)
+       (reduce-iter! iter rf init)))))

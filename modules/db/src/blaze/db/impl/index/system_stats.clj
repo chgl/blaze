@@ -66,5 +66,6 @@
   Needs to use an iterator because there could be no entry at `t`. So `kv/seek!`
   is used to get near `t`."
   [iter t]
-  (when (kv/seek! iter (encode-key t))
+  (kv/seek! iter (encode-key t))
+  (when (kv/valid? iter)
     (decode-value (kv/value iter))))

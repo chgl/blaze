@@ -3,12 +3,9 @@
     [blaze.fhir.spec]
     [blaze.db.impl.codec :as codec]
     [blaze.db.indexer :as indexer]
+    [blaze.db.spec]
     [clojure.spec.alpha :as s]
     [manifold.deferred :refer [deferred?]]))
-
-
-(s/def ::indexer/resource
-  #(satisfies? indexer/Resource %))
 
 
 (s/def :blaze.resource/hash

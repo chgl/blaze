@@ -1,32 +1,19 @@
-(ns blaze.db.impl.index.type-list
-  "Provides one public function: `type-list`."
+(ns blaze.db.impl.index.resource-as-of
+  "Provides two public functions: `type-list` and `system-list`."
   (:require
     [blaze.coll.core :as coll]
     [blaze.db.kv :as kv]
     [blaze.db.impl.codec :as codec]
-    [blaze.db.impl.iterators :as i]
-    [blaze.fhir.util :as fhir-util])
+    [blaze.db.impl.index.resource :as resource :refer [mk-resource]]
+    [blaze.db.impl.iterators :as i])
   (:import
     [blaze.db.impl.codec ResourceAsOfKV]
-    [blaze.db.impl.index.resource Resource ResourceContentMeta Hash]
     [clojure.lang IReduceInit]
-    [java.nio ByteBuffer]
-    [java.util Arrays]))
+    [java.nio ByteBuffer]))
 
 
 (set! *warn-on-reflection* true)
 (set! *unchecked-math* :warn-on-boxed)
-
-
-(let [kvs (->> (fhir-util/resources)
-               (map (fn [{:keys [type]}] [(codec/tid type) type]))
-               (sort-by first))
-      tid->idx (int-array (map first kvs))
-      idx->type (object-array (map second kvs))]
-  (defn- tid->type [^long tid]
-    (let [idx (Arrays/binarySearch tid->idx tid)]
-      (when (nat-int? idx)
-        (aget idx->type idx)))))
 
 
 (def ^:const ^:private ^long max-key-size
@@ -37,14 +24,8 @@
   (+ codec/hash-size codec/state-size))
 
 
-(defn- type-list-start-key [tid start-id t]
-  (if start-id
-    (codec/resource-as-of-key tid start-id t)
-    (codec/resource-as-of-key tid)))
-
-
 (defn- key-reader [iter ^ByteBuffer kb]
-  (fn [_] (kv/-key iter (.clear kb))))
+  (fn [_] (kv/key iter (.clear kb))))
 
 
 (defn- focus-id!
@@ -81,28 +62,44 @@
   Returns true if the id changed over the previously seen one. Keeps the id
   buffer up to date."
   [^ByteBuffer kb ^ByteBuffer ib]
-  (map
-    (fn [_]
-      (focus-id! kb)
-      (cond
-        (zero? (.limit ib))
-        (do
-          (copy-id! kb ib)
-          false)
+  (fn [_]
+    (focus-id! kb)
+    (cond
+      (zero? (.limit ib))
+      (do
+        (copy-id! kb ib)
+        false)
 
-        (.equals kb ib)
+      (.equals kb ib)
+      (do
+        (skip-id! kb ib)
+        false)
+
+      :else
+      (do
+        (copy-id! kb ib)
+        true))))
+
+
+(defn- tid-marker [^ByteBuffer kb tid-box ^ByteBuffer ib id-marker]
+  (fn [x]
+    (let [tid (codec/get-tid! kb)
+          last-tid @tid-box]
+      (cond
+        (nil? last-tid)
         (do
-          (skip-id! kb ib)
-          false)
+          (vreset! tid-box tid)
+          (id-marker x))
+
+        (= tid last-tid)
+        (id-marker x)
 
         :else
         (do
-          (copy-id! kb ib)
+          (vreset! tid-box tid)
+          (.limit ib 0)
+          (id-marker x)
           true)))))
-
-
-(defn- get-t! ^long [^ByteBuffer kb]
-  (codec/descending-long (.getLong kb)))
 
 
 (defn- new-entry!
@@ -116,7 +113,7 @@
     (.getLong vb)))
 
 
-(defn- entry-creator
+(defn- type-entry-creator
   "Returns a function of no argument which creates a new `ResourceAsOfKV` entry
   if the `t` in `kb` at the time of invocation is less than or equal `base-t`.
 
@@ -124,10 +121,19 @@
   created entry."
   [tid iter kb ib base-t]
   (let [vb (ByteBuffer/allocateDirect value-size)]
-    #(let [t (get-t! kb)]
+    #(let [t (codec/get-t! kb)]
        (when (<= t ^long base-t)
-         (kv/-value iter (.clear vb))
+         (kv/value iter (.clear vb))
          (new-entry! tid ib vb t)))))
+
+
+(defn- system-entry-creator
+  [tid-box iter ^ByteBuffer kb ib base-t]
+  (let [vb (ByteBuffer/allocateDirect value-size)]
+    #(let [t (codec/get-t! kb)]
+       (when (<= t ^long base-t)
+         (kv/value iter (.clear vb))
+         (new-entry! @tid-box ib vb t)))))
 
 
 (defn- group-by-id
@@ -165,22 +171,16 @@
                result))))))))
 
 
-(defn- new-resource [kv-store resource-cache ^ResourceAsOfKV entry]
-  (Resource.
-    kv-store
-    resource-cache
-    (tid->type (.tid entry))
-    (.id entry)
-    (Hash. (.hash entry))
-    (.state entry)
-    (.t entry)
-    (ResourceContentMeta. resource-cache hash (.t entry) nil)
-    nil
-    nil))
+(defn- new-resource [{:blaze.db/keys [kv-store resource-cache]}]
+  (fn [^ResourceAsOfKV entry]
+    (mk-resource kv-store resource-cache (.tid entry) (.id entry) (.hash entry)
+                 (.state entry) (.t entry))))
 
 
-(defn- deleted? [^Resource resource]
-  (codec/deleted? (.state resource)))
+(defn- start-key [tid start-id t]
+  (if start-id
+    (codec/resource-as-of-key tid start-id t)
+    (codec/resource-as-of-key tid)))
 
 
 (defn type-list
@@ -263,16 +263,113 @@
   and state which are read from the value buffer are only read once for each
   resource."
   ^IReduceInit
-  [{:blaze.db/keys [kv-store resource-cache]} iter tid start-id t]
+  [context raoi tid start-id t]
   (let [kb (ByteBuffer/allocateDirect max-key-size)
         ib (.limit (ByteBuffer/allocate codec/max-id-size) 0)
-        entry-creator (entry-creator tid iter kb ib t)]
+        entry-creator (type-entry-creator tid raoi kb ib t)]
     (coll/eduction
       (comp
-        (map (key-reader iter kb))
-        (take-while (fn [_] (= ^int tid (.getInt kb))))
-        (id-marker kb ib)
+        (map (key-reader raoi kb))
+        (take-while (fn [_] (= ^int tid (codec/get-tid! kb))))
+        (map (id-marker kb ib))
         (group-by-id entry-creator)
-        (map #(new-resource kv-store resource-cache %))
-        (remove deleted?))
-      (i/iter iter (type-list-start-key tid start-id t)))))
+        (map (new-resource context))
+        (remove resource/deleted?))
+      (i/iter raoi (start-key tid start-id t)))))
+
+
+(defn system-list
+  "Returns a reducible collection of all resources ordered by resource tid and
+  resource id.
+
+  The list starts at the optional `start-tid` and `start-id`."
+  ^IReduceInit
+  [context raoi start-tid start-id t]
+  (let [kb (ByteBuffer/allocateDirect max-key-size)
+        tid-box (volatile! start-tid)
+        ib (.limit (ByteBuffer/allocate codec/max-id-size) 0)
+        entry-creator (system-entry-creator tid-box raoi kb ib t)]
+    (coll/eduction
+      (comp
+        (map (key-reader raoi kb))
+        (map (tid-marker kb tid-box ib (id-marker kb ib)))
+        (group-by-id entry-creator)
+        (map (new-resource context))
+        (remove resource/deleted?))
+      (if start-tid
+        (i/iter raoi (start-key start-tid start-id t))
+        (i/iter raoi)))))
+
+
+(defn- instance-history-key-valid? [^long tid id ^long end-t]
+  (fn [^ResourceAsOfKV kv]
+    (and (= (.tid kv) tid) (= (.id kv) id) (< end-t (.t kv)))))
+
+
+(defn instance-history
+  "Returns a reducible collection of all versions between `start-t` (inclusive)
+  and `end-t` (exclusive) of the resource with `tid` and `id`.
+
+  Versions are resources itself."
+  [context raoi tid id start-t end-t]
+  (let [start-key (codec/resource-as-of-key tid (codec/id-bytes id) start-t)]
+    (coll/eduction
+      (comp
+        (take-while (instance-history-key-valid? tid id end-t))
+        (map (new-resource context)))
+      (i/kvs raoi (codec/resource-as-of-kv-decoder) start-key))))
+
+
+(defn- with-raoi-kv [raoi target fn]
+  (kv/seek! raoi target)
+  (when (kv/valid? raoi)
+    ;; we have to check that we are still on target, because otherwise we would
+    ;; find the next resource
+    (let [k (kv/key raoi)]
+      (when (codec/bytes-eq-without-t target k)
+        (fn k (kv/value raoi))))))
+
+
+(defn hash-state-t
+  "Returns a triple of `hash`, `state` and `t` of the resource with `tid` and
+  `id` at or before `t`."
+  [raoi tid id t]
+  (with-raoi-kv
+    raoi (codec/resource-as-of-key tid id t)
+    (fn [k v]
+      [(codec/resource-as-of-value->hash v)
+       (codec/resource-as-of-value->state v)
+       (codec/resource-as-of-key->t k)])))
+
+
+(defn resource
+  "Returns a resource with `tid` and `id` at or before `t`."
+  [context raoi tid id t]
+  (with-raoi-kv
+    raoi (codec/resource-as-of-key tid id t)
+    (fn [k v]
+      (mk-resource
+        (:blaze.db/kv-store context) (:blaze.db/resource-cache context)
+        (codec/resource-as-of-key->tid k)
+        (codec/id (codec/resource-as-of-key->id k))
+        (codec/resource-as-of-value->hash v)
+        (codec/resource-as-of-value->state v)
+        (codec/resource-as-of-key->t k)))))
+
+
+(defn- resource-state [raoi target]
+  (with-raoi-kv raoi target (fn [_ v] (codec/resource-as-of-value->state v))))
+
+
+(defn- num-of-instance-changes* ^long [iter tid id t]
+  (-> (some-> (resource-state iter (codec/resource-as-of-key tid id t))
+              codec/state->num-changes)
+      (or 0)))
+
+
+(defn num-of-instance-changes
+  "Returns the number of changes between `start-t` (inclusive) and `end-t`
+  (inclusive) of the resource with `tid` and `id`."
+  [raoi tid id start-t end-t]
+  (- (num-of-instance-changes* raoi tid id start-t)
+     (num-of-instance-changes* raoi tid id end-t)))

@@ -146,14 +146,37 @@
   supplied."
   ([db]
    (p/-system-list db nil nil))
+  ([db start-type]
+   (p/-system-list db start-type nil))
   ([db start-type start-id]
-   (p/-list-resources db start-type start-id)))
+   (p/-system-list db start-type start-id)))
 
 
 (defn system-total
   "Returns the number of all resources in `db`."
   [db]
   (p/-system-total db))
+
+
+(defn system-query
+  "Returns a reducible collection of all resources in `db` matching `clauses`.
+
+  A clause is a vector were the first element is a search param code and the
+  following elements are values which are combined with logical or.
+
+  Returns an anomaly if search parameters in clauses can't be resolved."
+  [db clauses]
+  (when-ok [query (p/-compile-system-query db clauses)]
+    (p/-execute-query db query)))
+
+
+(defn compile-system-query
+  "Same as `system-query` but in a two step process of pre-compilation and later
+  execution by `execute-query`.
+
+  Returns an anomaly if search parameters in clauses can't be resolved."
+  [node-or-db clauses]
+  (p/-compile-system-query node-or-db clauses))
 
 
 
@@ -261,8 +284,14 @@
   The history optionally starts at `start-t` which defaults to the `t` of `db`.
   Additionally a `since` instant can be given to define a point in the past
   where the history should start into the present."
-  [db type start-t start-id since]
-  (p/-type-history db type start-t start-id since))
+  ([db type]
+   (p/-type-history db type nil nil nil))
+  ([db type start-t]
+   (p/-type-history db type start-t nil nil))
+  ([db type start-t start-id]
+   (p/-type-history db type start-t start-id nil))
+  ([db type start-t start-id since]
+   (p/-type-history db type start-t start-id since)))
 
 
 (defn total-num-of-type-changes
@@ -287,8 +316,16 @@
   The history optionally starts at `start-t` which defaults to the `t` of `db`.
   Additionally a `since` instant can be given to define a point in the past
   where the history should start into the present."
-  [db start-t start-type start-id since]
-  (p/-system-history db start-t start-type start-id since))
+  ([db]
+   (p/-system-history db nil nil nil nil))
+  ([db start-t]
+   (p/-system-history db start-t nil nil nil))
+  ([db start-t start-type]
+   (p/-system-history db start-t start-type nil nil))
+  ([db start-t start-type start-id]
+   (p/-system-history db start-t start-type start-id nil))
+  ([db start-t start-type start-id since]
+   (p/-system-history db start-t start-type start-id since)))
 
 
 (defn total-num-of-system-changes
@@ -297,9 +334,14 @@
 
   Optionally a `since` instant can be given to define a point in the past where
   the calculation should start."
-  [db since]
-  (p/-total-num-of-system-changes db since))
+  ([db]
+   (p/-total-num-of-system-changes db nil))
+  ([db since]
+   (p/-total-num-of-system-changes db since)))
 
+
+
+;; ---- Batch DB --------------------------------------------------------------
 
 (defn new-batch-db
   "Returns a variant of this `db` which is optimized for batch processing.

@@ -1,9 +1,6 @@
-(ns blaze.db.kv.mem
+(ns blaze.kv.mem
   (:require
-    [blaze.db.impl.bytes :as bytes]
-    [blaze.db.kv :as kv]
-    [integrant.core :as ig]
-    [taoensso.timbre :as log])
+    [blaze.kv :as kv])
   (:import
     [java.io Closeable]
     [java.util Arrays Comparator]
@@ -11,6 +8,10 @@
 
 
 (set! *warn-on-reflection* true)
+
+
+(defn- copy [^bytes bs]
+  (Arrays/copyOf bs (alength bs)))
 
 
 (defn- put
@@ -60,7 +61,7 @@
 
   (-key [_]
     (when closed? (throw (Exception. "closed")))
-    (-> @cursor :first key bytes/copy))
+    (-> @cursor :first key copy))
 
   (-key [_ byte-buffer]
     (when closed? (throw (Exception. "closed")))
@@ -68,7 +69,7 @@
 
   (-value [_]
     (when closed? (throw (Exception. "closed")))
-    (-> @cursor :first val bytes/copy))
+    (-> @cursor :first val copy))
 
   (-value [_ byte-buffer]
     (when closed? (throw (Exception. "closed")))
@@ -95,17 +96,17 @@
       (throw (column-family-unknown column-family))))
 
   (snapshot-get [_ k]
-    (some-> (get-in db [:default k]) (bytes/copy)))
+    (some-> (get-in db [:default k]) (copy)))
 
   (snapshot-get [_ column-family k]
-    (some-> (get-in db [column-family k]) (bytes/copy)))
+    (some-> (get-in db [column-family k]) (copy)))
 
   Closeable
   (close [_]))
 
 
 (defn- assoc-copy [m ^bytes k ^bytes v]
-  (assoc m (bytes/copy k) (bytes/copy v)))
+  (assoc m (copy k) (copy v)))
 
 
 (defn- put-entries [db entries]
@@ -173,13 +174,8 @@
 
 
 (defn init-mem-kv-store
+  "Initializes an in-memory key-value store with optional column families."
   ([]
    (init-mem-kv-store {}))
   ([column-families]
    (->MemKvStore (atom (init-db (conj (keys column-families) :default))))))
-
-
-(defmethod ig/init-key :blaze.db.kv/mem
-  [_ {:keys [column-families]}]
-  (log/info "Open in-memory key-value store.")
-  (init-mem-kv-store column-families))

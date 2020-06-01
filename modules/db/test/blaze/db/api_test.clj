@@ -3,6 +3,7 @@
     [blaze.coll.core :as coll]
     [blaze.db.api :as d]
     [blaze.db.api-spec]
+    [blaze.db.impl.db-spec]
     [blaze.db.indexer.resource :refer [init-resource-indexer]]
     [blaze.db.indexer.tx :refer [init-tx-indexer]]
     [blaze.db.kv.mem :refer [init-mem-kv-store]]
@@ -156,192 +157,200 @@
 
 (deftest list-resources-and-type-total
   (testing "a new node has no patients"
-    (is (coll/empty? (d/list-resources (d/db (new-node)) "Patient")))
-    (is (zero? (d/type-total (d/db (new-node)) "Patient"))))
+    (let [db (d/db (new-node))]
+      (is (coll/empty? (d/list-resources db "Patient")))
+      (is (zero? (d/type-total (d/db (new-node)) "Patient")))))
 
-  (testing "after one put, the db contains one patient"
+  (testing "a node with one patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      (given (into [] (d/list-resources (d/db node) "Patient"))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        [0 :meta :versionId] := "1"
-        1 := nil)
-      (is (= 1 (d/type-total (d/db node) "Patient")))))
 
-  (testing "after two puts, the db contains two patients"
-    (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "1"}]])
-      (given (into [] (d/list-resources (d/db node) "Patient"))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        [0 :meta :versionId] := "1"
-        [1 :resourceType] := "Patient"
-        [1 :id] := "1"
-        [1 :meta :versionId] := "2"
-        2 := nil)
-      (is (= 2 (d/type-total (d/db node) "Patient")))))
+      (testing "has one list entry"
+        (is (= 1 (count (into [] (d/list-resources (d/db node) "Patient")))))
+        (is (= 1 (d/type-total (d/db node) "Patient"))))
 
-  (testing "after two puts in one transaction, the db contains two patients"
-    (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]
-                          [:put {:resourceType "Patient" :id "1"}]])
-      (given (into [] (d/list-resources (d/db node) "Patient"))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        [0 :meta :versionId] := "1"
-        [1 :resourceType] := "Patient"
-        [1 :id] := "1"
-        [1 :meta :versionId] := "1"
-        2 := nil)
-      (is (= 2 (d/type-total (d/db node) "Patient")))))
+      (testing "contains that patient"
+        (given (into [] (d/list-resources (d/db node) "Patient"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "1"))))
 
-  (testing "a deleted resource does not show up"
+  (testing "a node with one deleted patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
       @(d/submit-tx node [[:delete "Patient" "0"]])
-      (is (coll/empty? (d/list-resources (d/db node) "Patient")))
-      (is (zero? (d/type-total (d/db (new-node)) "Patient")))))
 
-  (testing "an older version of the resource does not show up"
-    (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      (given (into [] (d/list-resources (d/db node) "Patient"))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        [0 :meta :versionId] := "2"
-        1 := nil)
-      (is (= 1 (d/type-total (d/db node) "Patient")))))
+      (testing "doesn't contain it in the list"
+        (is (coll/empty? (d/list-resources (d/db node) "Patient")))
+        (is (zero? (d/type-total (d/db node) "Patient"))))))
 
-  (testing "older versions of the resources don't not show up"
-    (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]
-                          [:put {:resourceType "Patient" :id "1"}]])
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]
-                          [:put {:resourceType "Patient" :id "1"}]])
-      (given (into [] (d/list-resources (d/db node) "Patient"))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        [0 :meta :versionId] := "2"
-        [1 :resourceType] := "Patient"
-        [1 :id] := "1"
-        [1 :meta :versionId] := "2"
-        2 := nil)
-      (is (= 2 (d/type-total (d/db node) "Patient")))))
-
-  (testing "resources submitted after getting the db don't show up"
-    (testing "new version of same resource"
-      (let [node (new-node)]
-        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-        (let [db (d/db node)]
-          @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-          (given (into [] (d/list-resources db "Patient"))
-            [0 :resourceType] := "Patient"
-            [0 :id] := "0"
-            [0 :meta :versionId] := "1"
-            1 := nil)
-          (is (= 1 (d/type-total db "Patient"))))))
-    (testing "another resource"
-      (let [node (new-node)]
-        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-        (let [db (d/db node)]
-          @(d/submit-tx node [[:put {:resourceType "Patient" :id "1"}]])
-          (given (into [] (d/list-resources db "Patient"))
-            [0 :resourceType] := "Patient"
-            [0 :id] := "0"
-            [0 :meta :versionId] := "1"
-            1 := nil)
-          (is (= 1 (d/type-total db "Patient"))))))
-    (testing "new versions of two resources"
-      (let [node (new-node)]
-        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]
-                            [:put {:resourceType "Patient" :id "1"}]])
-        (let [db (d/db node)]
-          @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]
-                              [:put {:resourceType "Patient" :id "1"}]])
-          (given (into [] (d/list-resources db "Patient"))
-            [0 :resourceType] := "Patient"
-            [0 :id] := "0"
-            [0 :meta :versionId] := "1"
-            [1 :resourceType] := "Patient"
-            [1 :id] := "1"
-            [1 :meta :versionId] := "1"
-            2 := nil)
-          (is (= 2 (d/type-total db "Patient")))))))
-
-  (testing "it is possible to start at a later id"
+  (testing "a node with two patients in two transactions"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "1"}]])
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "2"}]])
-      (given (into [] (d/list-resources (d/db node) "Patient" "1"))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "1"
-        [0 :meta :versionId] := "2"
-        [1 :resourceType] := "Patient"
-        [1 :id] := "2"
-        [1 :meta :versionId] := "3"
-        2 := nil)))
 
-  (testing "later types do not show up"
+      (testing "has two list entries"
+        (is (= 2 (count (into [] (d/list-resources (d/db node) "Patient")))))
+        (is (= 2 (d/type-total (d/db node) "Patient"))))
+
+      (testing "contains both patients in id order"
+        (given (into [] (d/list-resources (d/db node) "Patient"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "1"
+          [1 :resourceType] := "Patient"
+          [1 :id] := "1"
+          [1 :meta :versionId] := "2"))
+
+      (testing "it is possible to start with the second patient"
+        (given (into [] (d/list-resources (d/db node) "Patient" "1"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "1"
+          [0 :meta :versionId] := "2"))
+
+      (testing "overshooting the start-id returns an empty collection"
+        (is (coll/empty? (d/list-resources (d/db node) "Patient" "2"))))))
+
+  (testing "a node with two patients in one transaction"
     (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Observation" :id "0"}]])
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]
+                          [:put {:resourceType "Patient" :id "1"}]])
+
+      (testing "has two list entries"
+        (is (= 2 (count (into [] (d/list-resources (d/db node) "Patient")))))
+        (is (= 2 (d/type-total (d/db node) "Patient"))))
+
+      (testing "contains both patients in id order"
+        (given (into [] (d/list-resources (d/db node) "Patient"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "1"
+          [1 :resourceType] := "Patient"
+          [1 :id] := "1"
+          [1 :meta :versionId] := "1"))
+
+      (testing "it is possible to start with the second patient"
+        (given (into [] (d/list-resources (d/db node) "Patient" "1"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "1"
+          [0 :meta :versionId] := "1"))
+
+      (testing "overshooting the start-id returns an empty collection"
+        (is (coll/empty? (d/list-resources (d/db node) "Patient" "2"))))))
+
+  (testing "a node with one updated patient"
+    (let [node (new-node)]
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active false}]])
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active true}]])
+
+      (testing "has one list entry"
+        (is (= 1 (count (into [] (d/list-resources (d/db node) "Patient")))))
+        (is (= 1 (d/type-total (d/db node) "Patient"))))
+
+      (testing "contains the updated patient"
+        (given (into [] (d/list-resources (d/db node) "Patient"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :active] := true
+          [0 :meta :versionId] := "2"))))
+
+  (testing "a node with resources of different types"
+    (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      (given (into [] (d/list-resources (d/db node) "Observation"))
-        [0 :resourceType] := "Observation"
-        [0 :id] := "0"
-        1 := nil)
-      (is (= 1 (d/type-total (d/db node) "Observation"))))))
+      @(d/submit-tx node [[:put {:resourceType "Observation" :id "0"}]])
+
+      (testing "has one patient list entry"
+        (is (= 1 (count (into [] (d/list-resources (d/db node) "Patient")))))
+        (is (= 1 (d/type-total (d/db node) "Patient"))))
+
+      (testing "has one observation list entry"
+        (is (= 1 (count (into [] (d/list-resources (d/db node) "Observation")))))
+        (is (= 1 (d/type-total (d/db node) "Observation"))))))
+
+  (testing "the database is immutable"
+    (testing "while updating a patient"
+      (let [node (new-node)]
+        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active false}]])
+
+        (let [db (d/db node)]
+          @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active true}]])
+
+          (testing "the original database"
+            (testing "has still only one list entry"
+              (is (= 1 (count (into [] (d/list-resources db "Patient")))))
+              (is (= 1 (d/type-total db "Patient"))))
+
+            (testing "contains still the original patient"
+              (given (into [] (d/list-resources db "Patient"))
+                [0 :resourceType] := "Patient"
+                [0 :id] := "0"
+                [0 :active] := false
+                [0 :meta :versionId] := "1"))))))
+
+    (testing "while adding another patient"
+      (let [node (new-node)]
+        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
+
+        (let [db (d/db node)]
+          @(d/submit-tx node [[:put {:resourceType "Patient" :id "1"}]])
+
+          (testing "the original database"
+            (testing "has still only one list entry"
+              (is (= 1 (count (into [] (d/list-resources db "Patient")))))
+              (is (= 1 (d/type-total db "Patient"))))
+
+            (testing "contains still the first patient"
+              (given (into [] (d/list-resources db "Patient"))
+                [0 :resourceType] := "Patient"
+                [0 :id] := "0"
+                [0 :meta :versionId] := "1"))))))))
 
 
 (deftest type-query
-  (testing "a new node has a empty list of resources"
+  (testing "a new node has no patients"
     (let [db (d/db (new-node))]
       (is (coll/empty? (d/type-query db "Patient" [["gender" "male"]])))))
 
-  (testing "finds the patient"
+  (testing "a node with one patient"
     (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :gender "male"}]])
-      (given (into [] (d/type-query (d/db node) "Patient" [["gender" "male"]]))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        1 := nil)))
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active true}]])
 
-  (testing "finds only the male patient"
-    (let [node (new-node)]
-      @(d/submit-tx
-         node
-         [[:put {:resourceType "Patient" :id "0" :gender "male"}]
-          [:put {:resourceType "Patient" :id "1" :gender "female"}]])
-      (given (into [] (d/type-query (d/db node) "Patient" [["gender" "male"]]))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        1 := nil)))
+      (testing "the patient can be found"
+        (given (into [] (d/type-query (d/db node) "Patient" [["active" "true"]]))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"))))
 
-  (testing "finds both the male and the female patient"
+  (testing "a node with two patients in one transaction"
     (let [node (new-node)]
-      @(d/submit-tx
-         node
-         [[:put {:resourceType "Patient" :id "0" :gender "male"}]
-          [:put {:resourceType "Patient" :id "1" :gender "female"}]])
-      (given (into [] (d/type-query (d/db node) "Patient" [["gender" "male" "female"]]))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        [1 :resourceType] := "Patient"
-        [1 :id] := "1")))
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active true}]
+                          [:put {:resourceType "Patient" :id "1" :active false}]])
+
+      (testing "only the active patient will be found"
+        (given (into [] (d/type-query (d/db node) "Patient" [["active" "true"]]))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          1 := nil))
+
+      (testing "only the non-active patient will be found"
+        (given (into [] (d/type-query (d/db node) "Patient" [["active" "false"]]))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "1"
+          1 := nil))
+
+      (testing "both patients will be found"
+        (given (into [] (d/type-query (d/db node) "Patient" [["active" "true" "false"]]))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [1 :resourceType] := "Patient"
+          [1 :id] := "1"))))
 
   (testing "does not find the deleted male patient"
     (let [node (new-node)]
-      @(d/submit-tx
-         node
-         [[:put {:resourceType "Patient" :id "0" :gender "male"}]
-          [:put {:resourceType "Patient" :id "1" :gender "male"}]])
-      @(d/submit-tx
-         node
-         [[:delete "Patient" "1"]])
-      (given (into [] (d/type-query (d/db node) "Patient" [["gender" "male"]]))
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active true}]
+                          [:put {:resourceType "Patient" :id "1" :active true}]])
+      @(d/submit-tx node [[:delete "Patient" "1"]])
+
+      (given (into [] (d/type-query (d/db node) "Patient" [["active" "true"]]))
         [0 :resourceType] := "Patient"
         [0 :id] := "0"
         1 := nil)))
@@ -352,6 +361,9 @@
          node
          [[:put {:resourceType "Patient"
                  :id "id-0"
+                 :meta
+                 {:profile
+                  ["profile-uri-145024"]}
                  :identifier
                  [{:value "0"}]
                  :active false
@@ -386,6 +398,12 @@
                    :city "Leipzig"}]
                  :name
                  [{:family "Schmidt"}]}]])
+
+      (testing "_profile"
+        (given (into [] (d/type-query (d/db node) "Patient"
+                                      [["_profile" "profile-uri-145024"]]))
+          [0 :id] := "id-0"
+          1 := nil))
 
       (testing "active"
         (given (into [] (d/type-query (d/db node) "Patient" [["active" "true"]]))
@@ -737,21 +755,74 @@
 
 ;; ---- System-Level Functions ------------------------------------------------
 
-(deftest system-total
-  (testing "a new node has zero resources"
+(deftest system-list-and-total
+  (testing "a new node has no resources"
     (is (zero? (d/system-total (d/db (new-node))))))
 
-  (testing "after a put transaction, the db contains one resource"
+  (testing "a node with one patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      (is (= 1 (d/system-total (d/db node)))))))
+
+      (testing "has one list entry"
+        (is (= 1 (count (into [] (d/system-list (d/db node))))))
+        (is (= 1 (d/system-total (d/db node)))))
+
+      (testing "contains that patient"
+        (given (into [] (d/system-list (d/db node)))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "1"))))
+
+  (testing "a node with one deleted patient"
+    (let [node (new-node)]
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
+      @(d/submit-tx node [[:delete "Patient" "0"]])
+
+      (testing "doesn't contain it in the list"
+        (is (coll/empty? (d/system-list (d/db node))))
+        (is (zero? (d/system-total (d/db node)))))))
+
+  (testing "a node with two resources in two transactions"
+    (let [node (new-node)]
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
+      @(d/submit-tx node [[:put {:resourceType "Observation" :id "0"}]])
+
+      (testing "has two list entries"
+        (is (= 2 (count (into [] (d/system-list (d/db node))))))
+        (is (= 2 (d/system-total (d/db node)))))
+
+      (testing "contains both resources in the order of their type hashes"
+        (given (into [] (d/system-list (d/db node)))
+          [0 :resourceType] := "Observation"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "2"
+          [1 :resourceType] := "Patient"
+          [1 :id] := "0"
+          [1 :meta :versionId] := "1"))
+
+      (testing "it is possible to start with the patient"
+        (given (into [] (d/system-list (d/db node) "Patient"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "1"))
+
+      (testing "starting with Measure also returns the patient,
+                because in type hash order, Measure comes before
+                Patient but after Observation"
+        (given (into [] (d/system-list (d/db node) "Measure"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "1"))
+
+      (testing "overshooting the start-id returns an empty collection"
+        (is (coll/empty? (d/system-list (d/db node) "Patient" "1")))))))
 
 
 
 ;; ---- Compartment-Level Functions -------------------------------------------
 
 (deftest list-compartment-resources
-  (testing "a new node has a empty list of resources in the Patient/0 compartment"
+  (testing "a new node has an empty list of resources in the Patient/0 compartment"
     (let [db (d/db (new-node))]
       (is (coll/empty? (d/list-compartment-resources db "Patient" "0" "Observation")))))
 
@@ -812,7 +883,7 @@
 
 
 (deftest compartment-query
-  (testing "a new node has a empty list of resources in the Patient/0 compartment"
+  (testing "a new node has an empty list of resources in the Patient/0 compartment"
     (let [db (d/db (new-node))]
       (is (coll/empty? (d/compartment-query db "Patient" "0" "Observation" [["code" "foo"]])))))
 
@@ -906,8 +977,8 @@
          node
          [[:delete "Observation" "0"]])
       (is (coll/empty? (d/compartment-query
-                        (d/db node) "Patient" "0" "Observation"
-                        [["code" "system|code"]])))))
+                         (d/db node) "Patient" "0" "Observation"
+                         [["code" "system|code"]])))))
 
   (testing "finds resources after deleted ones"
     (let [observation
@@ -1027,87 +1098,164 @@
 ;; ---- Instance-Level History Functions --------------------------------------
 
 (deftest instance-history
-  (testing "a new node has a empty instance history"
+  (testing "a new node has an empty instance history"
     (let [db (d/db (new-node))]
       (is (coll/empty? (d/instance-history db "Patient" "0")))
       (is (zero? (d/total-num-of-instance-changes db "Patient" "0")))))
 
-  (testing "a node with one resource shows it in the instance history"
+  (testing "a node with one patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      (given (into [] (d/instance-history (d/db node) "Patient" "0"))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        [0 :meta :versionId] := "1")
-      (is (= 1 (d/total-num-of-instance-changes (d/db node) "Patient" "0")))))
 
-  (testing "a node with one deleted resource"
+      (testing "has one history entry"
+        (is (= 1 (count (into [] (d/instance-history (d/db node) "Patient" "0")))))
+        (is (= 1 (d/total-num-of-instance-changes (d/db node) "Patient" "0"))))
+
+      (testing "contains that patient"
+        (given (into [] (d/instance-history (d/db node) "Patient" "0"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "1"))
+
+      (testing "has an empty history on another patient"
+        (is (coll/empty? (d/instance-history (d/db node) "Patient" "1")))
+        (is (zero? (d/total-num-of-instance-changes (d/db node) "Patient" "1"))))))
+
+  (testing "a node with one deleted patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
       @(d/submit-tx node [[:delete "Patient" "0"]])
 
       (testing "has two history entries"
+        (is (= 2 (count (into [] (d/instance-history (d/db node) "Patient" "0")))))
         (is (= 2 (d/total-num-of-instance-changes (d/db node) "Patient" "0"))))
 
-      (testing "the first history entry is the deletion event"
+      (testing "the first history entry is the patient marked as deleted"
         (given (into [] (d/instance-history (d/db node) "Patient" "0"))
-          [0 meta :blaze.db/op] := :delete
-          [0 :meta :versionId] := "2"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "2"
+          [0 meta :blaze.db/op] := :delete))
 
-      (testing "the second history entry is the creation event"
+      (testing "the second history entry is the patient marked as created"
         (given (into [] (d/instance-history (d/db node) "Patient" "0"))
           [1 :resourceType] := "Patient"
           [1 :id] := "0"
           [1 :meta :versionId] := "1"
           [1 meta :blaze.db/op] := :put))))
 
-  (testing "an earlier start-t can be used"
+  (testing "a node with two versions"
     (let [node (new-node)]
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active true}]])
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active false}]])
 
-      (testing "the versionId of the first entry is equal to `start-t`"
+      (testing "has two history entries"
+        (is (= 2 (count (into [] (d/instance-history (d/db node) "Patient" "0")))))
+        (is (= 2 (d/total-num-of-instance-changes (d/db node) "Patient" "0"))))
+
+      (testing "contains both versions in reverse transaction order"
+        (given (into [] (d/instance-history (d/db node) "Patient" "0"))
+          [0 :active] := false
+          [1 :active] := true))
+
+      (testing "it is possible to start with the older transaction"
         (given (into [] (d/instance-history (d/db node) "Patient" "0" 1))
-          [0 :meta :versionId] := "1")))))
+          [0 :active] := true))
+
+      (testing "overshooting the start-t returns an empty collection"
+        (is (coll/empty? (d/instance-history (d/db node) "Patient" "0" 0))))))
+
+  (testing "the database is immutable"
+    (testing "while updating a patient"
+      (let [node (new-node)]
+        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active false}]])
+
+        (let [db (d/db node)]
+          @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active true}]])
+
+          (testing "the original database"
+            (testing "has still only one history entry"
+              (is (= 1 (count (into [] (d/instance-history db "Patient" "0")))))
+              (is (= 1 (d/total-num-of-instance-changes db "Patient" "0"))))
+
+            (testing "contains still the original patient"
+              (given (into [] (d/instance-history db "Patient" "0"))
+                [0 :resourceType] := "Patient"
+                [0 :id] := "0"
+                [0 :active] := false
+                [0 :meta :versionId] := "1"))))))))
 
 
 
 ;; ---- Type-Level History Functions ------------------------------------------
 
 (deftest type-history
-  (testing "a new node has a empty type history"
+  (testing "a new node has an empty type history"
     (let [db (d/db (new-node))]
-      (is (coll/empty? (d/type-history db "Patient" nil nil nil)))
+      (is (coll/empty? (d/type-history db "Patient")))
       (is (zero? (d/total-num-of-type-changes db "Patient")))))
 
-  (testing "a node with one resource shows it in the type history"
+  (testing "a node with one patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      (given (into [] (d/type-history (d/db node) "Patient" nil nil nil))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        [0 :meta :versionId] := "1")
-      (is (= 1 (d/total-num-of-type-changes (d/db node) "Patient")))))
 
-  (testing "a node with one deleted resource"
+      (testing "has one history entry"
+        (is (= 1 (count (into [] (d/type-history (d/db node) "Patient")))))
+        (is (= 1 (d/total-num-of-type-changes (d/db node) "Patient"))))
+
+      (testing "contains that patient"
+        (given (into [] (d/type-history (d/db node) "Patient"))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "1"))
+
+      (testing "has an empty observation history"
+        (is (coll/empty? (d/type-history (d/db node) "Observation")))
+        (is (zero? (d/total-num-of-type-changes (d/db node) "Observation"))))))
+
+  (testing "a node with one deleted patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
       @(d/submit-tx node [[:delete "Patient" "0"]])
 
       (testing "has two history entries"
+        (is (= 2 (count (into [] (d/type-history (d/db node) "Patient")))))
         (is (= 2 (d/total-num-of-type-changes (d/db node) "Patient"))))
 
-      (testing "the first history entry is the deletion event"
-        (given (into [] (d/type-history (d/db node) "Patient" nil nil nil))
+      (testing "the first history entry is the patient marked as deleted"
+        (given (into [] (d/type-history (d/db node) "Patient"))
+          [0 :resourceType] := "Patient"
           [0 :id] := "0"
           [0 :meta :versionId] := "2"
           [0 meta :blaze.db/op] := :delete))
 
-      (testing "the second history entry is the creation event"
-        (given (into [] (d/type-history (d/db node) "Patient" nil nil nil))
+      (testing "the second history entry is the patient marked as created"
+        (given (into [] (d/type-history (d/db node) "Patient"))
           [1 :resourceType] := "Patient"
           [1 :id] := "0"
-          [1 :meta :versionId] := "1"))))
+          [1 :meta :versionId] := "1"
+          [1 meta :blaze.db/op] := :put))))
+
+  (testing "a node with two patients in two transactions"
+    (let [node (new-node)]
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "1"}]])
+
+      (testing "has two history entries"
+        (is (= 2 (count (into [] (d/type-history (d/db node) "Patient")))))
+        (is (= 2 (d/total-num-of-type-changes (d/db node) "Patient"))))
+
+      (testing "contains both patients in reverse transaction order"
+        (given (into [] (d/type-history (d/db node) "Patient"))
+          [0 :id] := "1"
+          [1 :id] := "0"))
+
+      (testing "it is possible to start with the older transaction"
+        (given (into [] (d/type-history (d/db node) "Patient" 1))
+          [0 :id] := "0"))
+
+      (testing "overshooting the start-t returns an empty collection"
+        (is (coll/empty? (d/type-history (d/db node) "Patient" 0))))))
 
   (testing "a node with two patients in one transaction"
     (let [node (new-node)]
@@ -1115,50 +1263,120 @@
                           [:put {:resourceType "Patient" :id "1"}]])
 
       (testing "has two history entries"
+        (is (= 2 (count (into [] (d/type-history (d/db node) "Patient")))))
         (is (= 2 (d/total-num-of-type-changes (d/db node) "Patient"))))
 
+      (testing "contains both patients in the order of their ids"
+        (given (into [] (d/type-history (d/db node) "Patient"))
+          [0 :id] := "0"
+          [1 :id] := "1"))
+
       (testing "it is possible to start with the second patient"
-        (given (into [] (d/type-history (d/db node) "Patient" 1 "1" nil))
-          [0 :id] := "1")))))
+        (given (into [] (d/type-history (d/db node) "Patient" 1 "1"))
+          [0 :id] := "1"))))
+
+  (testing "the database is immutable"
+    (testing "while updating a patient"
+      (let [node (new-node)]
+        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active false}]])
+
+        (let [db (d/db node)]
+          @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active true}]])
+
+          (testing "the original database"
+            (testing "has still only one history entry"
+              (is (= 1 (count (into [] (d/type-history db "Patient")))))
+              (is (= 1 (d/total-num-of-type-changes db "Patient"))))
+
+            (testing "contains still the original patient"
+              (given (into [] (d/type-history db "Patient"))
+                [0 :resourceType] := "Patient"
+                [0 :id] := "0"
+                [0 :active] := false
+                [0 :meta :versionId] := "1"))))))
+
+    (testing "while adding another patient"
+      (let [node (new-node)]
+        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
+
+        (let [db (d/db node)]
+          @(d/submit-tx node [[:put {:resourceType "Patient" :id "1"}]])
+
+          (testing "the original database"
+            (testing "has still only one history entry"
+              (is (= 1 (count (into [] (d/type-history db "Patient")))))
+              (is (= 1 (d/total-num-of-type-changes db "Patient"))))
+
+            (testing "contains still the first patient"
+              (given (into [] (d/type-history db "Patient"))
+                [0 :resourceType] := "Patient"
+                [0 :id] := "0"
+                [0 :meta :versionId] := "1"))))))))
 
 
 
 ;; ---- System-Level History Functions ----------------------------------------
 
 (deftest system-history
-  (testing "a new node has a empty system history"
+  (testing "a new node has an empty system history"
     (let [db (d/db (new-node))]
-      (is (coll/empty? (d/system-history db nil nil nil nil)))
-      (is (zero? (d/total-num-of-system-changes db nil)))))
+      (is (coll/empty? (d/system-history db)))
+      (is (zero? (d/total-num-of-system-changes db)))))
 
-  (testing "a node with one resource shows it in the system history"
+  (testing "a node with one patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
-      (given (into [] (d/system-history (d/db node) nil nil nil nil))
-        [0 :resourceType] := "Patient"
-        [0 :id] := "0"
-        [0 :meta :versionId] := "1")
-      (is (= 1 (d/total-num-of-system-changes (d/db node) nil)))))
 
-  (testing "a node with one deleted resource"
+      (testing "has one history entry"
+        (is (= 1 (count (into [] (d/system-history (d/db node))))))
+        (is (= 1 (d/total-num-of-system-changes (d/db node)))))
+
+      (testing "contains that patient"
+        (given (into [] (d/system-history (d/db node)))
+          [0 :resourceType] := "Patient"
+          [0 :id] := "0"
+          [0 :meta :versionId] := "1"))))
+
+  (testing "a node with one deleted patient"
     (let [node (new-node)]
       @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
       @(d/submit-tx node [[:delete "Patient" "0"]])
 
       (testing "has two history entries"
-        (is (= 2 (d/total-num-of-system-changes (d/db node) nil))))
+        (is (= 2 (count (into [] (d/system-history (d/db node))))))
+        (is (= 2 (d/total-num-of-system-changes (d/db node)))))
 
-      (testing "the first history entry is the deletion event"
-        (given (into [] (d/system-history (d/db node) nil nil nil nil))
+      (testing "the first history entry is the patient marked as deleted"
+        (given (into [] (d/system-history (d/db node)))
+          [0 :resourceType] := "Patient"
           [0 :id] := "0"
           [0 :meta :versionId] := "2"
           [0 meta :blaze.db/op] := :delete))
 
-      (testing "the second history entry is the creation event"
-        (given (into [] (d/system-history (d/db node) nil nil nil nil))
+      (testing "the second history entry is the patient marked as created"
+        (given (into [] (d/system-history (d/db node)))
           [1 :resourceType] := "Patient"
           [1 :id] := "0"
-          [1 :meta :versionId] := "1"))))
+          [1 :meta :versionId] := "1"
+          [1 meta :blaze.db/op] := :put))))
+
+  (testing "a node with one patient and one observation in two transactions"
+    (let [node (new-node)]
+      @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
+      @(d/submit-tx node [[:put {:resourceType "Observation" :id "0"}]])
+
+      (testing "has two history entries"
+        (is (= 2 (count (into [] (d/system-history (d/db node))))))
+        (is (= 2 (d/total-num-of-system-changes (d/db node)))))
+
+      (testing "contains both resources in reverse transaction order"
+        (given (into [] (d/system-history (d/db node)))
+          [0 :resourceType] := "Observation"
+          [1 :resourceType] := "Patient"))
+
+      (testing "it is possible to start with the older transaction"
+        (given (into [] (d/system-history (d/db node) 1))
+          [0 :resourceType] := "Patient"))))
 
   (testing "a node with one patient and one observation in one transaction"
     (let [node (new-node)]
@@ -1166,15 +1384,16 @@
                           [:put {:resourceType "Observation" :id "0"}]])
 
       (testing "has two history entries"
-        (is (= 2 (d/total-num-of-system-changes (d/db node) nil))))
+        (is (= 2 (count (into [] (d/system-history (d/db node))))))
+        (is (= 2 (d/total-num-of-system-changes (d/db node)))))
 
-      (testing "the observation comes first (due to type hashing)"
-        (given (into [] (d/system-history (d/db node) nil nil nil nil))
+      (testing "contains both resources in the order of their type hashes"
+        (given (into [] (d/system-history (d/db node)))
           [0 :resourceType] := "Observation"
           [1 :resourceType] := "Patient"))
 
       (testing "it is possible to start with the patient"
-        (given (into [] (d/system-history (d/db node) 1 "Patient" nil nil))
+        (given (into [] (d/system-history (d/db node) 1 "Patient"))
           [0 :resourceType] := "Patient"))))
 
   (testing "a node with two patients in one transaction"
@@ -1183,8 +1402,47 @@
                           [:put {:resourceType "Patient" :id "1"}]])
 
       (testing "has two history entries"
-        (is (= 2 (d/total-num-of-system-changes (d/db node) nil))))
+        (is (= 2 (count (into [] (d/system-history (d/db node))))))
+        (is (= 2 (d/total-num-of-system-changes (d/db node)))))
 
       (testing "it is possible to start with the second patient"
-        (given (into [] (d/system-history (d/db node) 1 "Patient" "1" nil))
-          [0 :id] := "1")))))
+        (given (into [] (d/system-history (d/db node) 1 "Patient" "1"))
+          [0 :id] := "1"))))
+
+  (testing "the database is immutable"
+    (testing "while updating a patient"
+      (let [node (new-node)]
+        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active false}]])
+
+        (let [db (d/db node)]
+          @(d/submit-tx node [[:put {:resourceType "Patient" :id "0" :active true}]])
+
+          (testing "the original database"
+            (testing "has still only one history entry"
+              (is (= 1 (count (into [] (d/system-history db)))))
+              (is (= 1 (d/total-num-of-system-changes db))))
+
+            (testing "contains still the original patient"
+              (given (into [] (d/system-history db))
+                [0 :resourceType] := "Patient"
+                [0 :id] := "0"
+                [0 :active] := false
+                [0 :meta :versionId] := "1"))))))
+
+    (testing "while adding another patient"
+      (let [node (new-node)]
+        @(d/submit-tx node [[:put {:resourceType "Patient" :id "0"}]])
+
+        (let [db (d/db node)]
+          @(d/submit-tx node [[:put {:resourceType "Patient" :id "1"}]])
+
+          (testing "the original database"
+            (testing "has still only one history entry"
+              (is (= 1 (count (into [] (d/system-history db)))))
+              (is (= 1 (d/total-num-of-system-changes db))))
+
+            (testing "contains still the first patient"
+              (given (into [] (d/system-history db))
+                [0 :resourceType] := "Patient"
+                [0 :id] := "0"
+                [0 :meta :versionId] := "1"))))))))

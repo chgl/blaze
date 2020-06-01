@@ -1,6 +1,7 @@
 (ns blaze.db.impl.db-spec
   (:require
     [blaze.db.api-spec]
+    [blaze.db.impl.batch-db-spec]
     [blaze.db.impl.codec-spec]
     [blaze.db.impl.db :as db]
     [blaze.db.impl.index-spec]

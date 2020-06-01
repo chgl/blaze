@@ -220,6 +220,43 @@
                 (codec/id-bytes "id-122929")
                 hash))))))
 
+  (testing "Patient _profile"
+    (let [patient {:resourceType "Patient"
+                   :id "id-140855"
+                   :meta
+                   {:profile
+                    ["profile-uri-141443"]}}
+          hash (codec/hash patient)
+          [[_ k0 v0] [_ k1]]
+          (search-param/index-entries
+            (sr/get search-param-registry "_profile" "Patient")
+            hash patient [])]
+
+      (testing "the resource-value entry is"
+        (testing "resource-value-key"
+          (is (bytes/=
+                k0
+                (codec/resource-value-key
+                  (codec/tid "Patient")
+                  (codec/id-bytes "id-140855")
+                  hash
+                  (codec/c-hash "_profile")))))
+
+        (testing "resource-value-value"
+          (is (bytes/=
+                v0
+                (codec/v-hash "profile-uri-141443")))))
+
+      (testing "search-param-value-key is about the uri"
+        (is (bytes/=
+              k1
+              (codec/search-param-value-key
+                (codec/c-hash "_profile")
+                (codec/tid "Patient")
+                (codec/v-hash "profile-uri-141443")
+                (codec/id-bytes "id-140855")
+                hash))))))
+
   (testing "Patient phonetic"
     (let [patient {:resourceType "Patient"
                    :id "id-122929"

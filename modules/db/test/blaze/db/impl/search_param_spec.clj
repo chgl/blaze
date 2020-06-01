@@ -1,9 +1,10 @@
 (ns blaze.db.impl.search-param-spec
   (:require
     [blaze.db.impl.codec-spec]
-    [blaze.db.search-param-registry-spec]
+    [blaze.db.impl.iterators-spec]
     [blaze.db.impl.search-param :as search-param]
     [blaze.db.kv-spec]
+    [blaze.db.search-param-registry-spec]
     [blaze.fhir.spec]
     [blaze.fhir-path-spec]
     [clojure.spec.alpha :as s]
@@ -28,7 +29,7 @@
                :svri :blaze.db/kv-iterator
                :tid :blaze.db/tid
                :compiled-values (s/coll-of some? :min-count 1))
-  :ret (s/coll-of bytes?))
+  :ret (s/coll-of (s/tuple bytes? bytes? bytes?)))
 
 
 (s/fdef search-param/compartment-keys
@@ -37,7 +38,7 @@
                :compartment :blaze.db/compartment
                :tid :blaze.db/tid
                :compiled-values (s/coll-of some? :min-count 1))
-  :ret (s/coll-of bytes?))
+  :ret (s/coll-of (s/tuple bytes? bytes? bytes?)))
 
 
 (s/fdef search-param/matches?

@@ -1,8 +1,8 @@
 (ns blaze.db.indexer.tx
   (:require
-    [blaze.db.impl.bytes :as bytes]
     [blaze.db.impl.codec :as codec]
     [blaze.db.impl.index :as index]
+    [blaze.db.impl.index.resource-as-of :as resource-as-of]
     [blaze.db.impl.index.system-stats :as system-stats]
     [blaze.db.impl.index.type-stats :as type-stats]
     [blaze.db.indexer :as indexer]
@@ -41,13 +41,10 @@
 
 
 (defn- entries [tid id t hash num-changes op]
-  (assert num-changes)
-  [[:resource-as-of-index (codec/resource-as-of-key tid id t)
-    (codec/resource-as-of-value hash (codec/state (inc num-changes) op))]
-   [:type-as-of-index (codec/type-as-of-key tid t id)
-    bytes/empty]
-   [:system-as-of-index (codec/system-as-of-key t tid id)
-    bytes/empty]])
+  (let [value (codec/resource-as-of-value hash (codec/state (inc num-changes) op))]
+    [[:resource-as-of-index (codec/resource-as-of-key tid id t) value]
+     [:type-as-of-index (codec/type-as-of-key tid t id) value]
+     [:system-as-of-index (codec/system-as-of-key t tid id) value]]))
 
 
 (defmethod verify-tx-cmd :create
@@ -67,7 +64,7 @@
   (with-open [_ (prom/timer tx-indexer-duration-seconds "verify-tx-cmd-put")]
     (let [tid (codec/tid type)
           id-bytes (codec/id-bytes id)
-          [_ state old-t] (index/hash-state-t resource-as-of-iter tid id-bytes t)
+          [_ state old-t] (resource-as-of/hash-state-t resource-as-of-iter tid id-bytes t)
           num-changes (or (some-> state codec/state->num-changes) 0)]
       (if (or (nil? matches) (= matches old-t))
         (cond->
@@ -89,7 +86,7 @@
   (with-open [_ (prom/timer tx-indexer-duration-seconds "verify-tx-cmd-delete")]
     (let [tid (codec/tid type)
           id-bytes (codec/id-bytes id)
-          [_ state] (index/hash-state-t resource-as-of-iter tid id-bytes t)
+          [_ state] (resource-as-of/hash-state-t resource-as-of-iter tid id-bytes t)
           num-changes (or (some-> state codec/state->num-changes) 0)]
       (-> res
           (update :entries into (entries tid id-bytes t hash num-changes :delete))
@@ -158,10 +155,13 @@
 
 (deftype TxIndexer [kv-store tx-result-polling-interval]
   indexer/Tx
-  (last-t [_]
+  (-last-t [_]
     (with-open [snapshot (kv/new-snapshot kv-store)
-                i (kv/new-iterator snapshot :tx-success-index)]
-      (or (some-> (kv/seek-to-first! i) (codec/decode-t-key)) 0)))
+                iter (kv/new-iterator snapshot :tx-success-index)]
+      (kv/seek-to-first! iter)
+      (if (kv/valid? iter)
+        (codec/decode-t-key (kv/key iter))
+        0)))
 
   (-index-tx [_ t tx-instant tx-cmds]
     (with-open [_ (prom/timer tx-indexer-duration-seconds "submit-tx")]

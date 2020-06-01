@@ -49,11 +49,6 @@
 
 ;; ---- Byte Array Functions --------------------------------------------------
 
-(s/fdef codec/concat
-  :args (s/cat :b0 bytes? :b1 bytes?)
-  :ret bytes?)
-
-
 (s/fdef codec/id-bytes
   :args (s/cat :id string?)
   :ret :blaze.db/id-bytes)

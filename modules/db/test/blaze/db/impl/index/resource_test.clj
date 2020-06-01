@@ -4,6 +4,7 @@
     [blaze.db.impl.codec-stub :as codec-stub]
     [blaze.db.impl.index :as index]
     [blaze.db.impl.index.resource :as resource]
+    [blaze.db.impl.index.resource-spec]
     [blaze.db.impl.index-spec]
     [blaze.db.kv :as kv]
     [blaze.db.kv.mem :refer [init-mem-kv-store]]
@@ -48,22 +49,23 @@
      :blaze.db/resource-cache (resource-cache kv-store)}))
 
 
-(defn- mk-resource [context type id state t]
-  (resource/mk-resource context type id (codec/hash {:resourceType type :id id}) state t))
+(defn- mk-resource [{:blaze.db/keys [kv-store resource-cache]} type id state t]
+  (resource/mk-resource kv-store resource-cache (codec/tid type) id
+                        (codec/hash {:resourceType type :id id}) state t))
 
 
 (deftest resource
   (testing "hash is part of equals"
-    (is (not (.equals (mk-resource nil "Patient" "0" 0 0)
-                      (mk-resource nil "Patient" "1" 0 0)))))
+    (is (not (.equals (mk-resource (new-context) "Patient" "0" 0 0)
+                      (mk-resource (new-context) "Patient" "1" 0 0)))))
 
   (testing "state is not part of equals"
-    (is (.equals (mk-resource nil "Patient" "0" 0 0)
-                 (mk-resource nil "Patient" "0" 1 0))))
+    (is (.equals (mk-resource (new-context) "Patient" "0" 0 0)
+                 (mk-resource (new-context) "Patient" "0" 1 0))))
 
   (testing "t is part of equals"
-    (is (not (.equals (mk-resource nil "Patient" "0" 0 0)
-                      (mk-resource nil "Patient" "0" 0 1)))))
+    (is (not (.equals (mk-resource (new-context) "Patient" "0" 0 0)
+                      (mk-resource (new-context) "Patient" "0" 0 1)))))
 
   (testing "resources can be serialized to JSON"
     (let [resource-cache
@@ -71,7 +73,8 @@
             (get [_ _]
               {:id "0"
                :resourceType "Patient"}))
-          resource (mk-resource {:blaze.db/resource-cache resource-cache} "Patient" "0" 0 0)]
+          context (assoc (new-context) :blaze.db/resource-cache resource-cache)
+          resource (mk-resource context "Patient" "0" 0 0)]
       (is (= "{\"id\":\"0\",\"resourceType\":\"Patient\",\"meta\":{\"versionId\":\"0\"}}"
              (json/generate-string resource)))))
 

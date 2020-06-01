@@ -12,9 +12,8 @@
     [java.nio.charset Charset StandardCharsets]
     [java.time Instant LocalDate LocalDateTime OffsetDateTime Year YearMonth
                ZoneId ZoneOffset]
-    [java.util Arrays List Map]
-    [java.lang.reflect Array])
-  (:refer-clojure :exclude [concat hash]))
+    [java.util Arrays List Map])
+  (:refer-clojure :exclude [hash]))
 
 
 (set! *warn-on-reflection* true)
@@ -28,8 +27,6 @@
 (def ^:const ^int hash-prefix-size 4)
 (def ^:const ^int c-hash-size Integer/BYTES)
 (def ^:const ^int v-hash-size Integer/BYTES)
-(def ^:const ^int unit-hash-size 4)
-(def ^:const ^int cid-size Integer/BYTES)
 (def ^:const ^int tid-size Integer/BYTES)
 (def ^:const ^int t-size Long/BYTES)
 (def ^:const ^int state-size Long/BYTES)
@@ -40,9 +37,9 @@
 
 ;; ---- Instances -------------------------------------------------------------
 
-(def ^:private ^Charset iso-8859-1 StandardCharsets/ISO_8859_1)
+(def ^Charset iso-8859-1 StandardCharsets/ISO_8859_1)
 
-(def ^:private ^Charset utf-8 StandardCharsets/UTF_8)
+(def ^Charset utf-8 StandardCharsets/UTF_8)
 
 
 
@@ -56,13 +53,6 @@
 
 (defn hex [bs]
   (.encode (BaseEncoding/base16) bs))
-
-
-(defn concat [^bytes b0 ^bytes b1]
-  (let [b (byte-array (+ (alength b0) (alength b1)))]
-    (System/arraycopy b0 0 b 0 (alength b0))
-    (System/arraycopy b1 0 b (alength b0) (alength b1))
-    b))
 
 
 (defn id-bytes [^String id]
@@ -131,17 +121,6 @@
   [c-hash tid value]
   (append-fs (search-param-value-key c-hash tid value)
              (+ 1 max-id-size 1 hash-prefix-size)))
-
-
-(defn search-param-value-key->id [^bytes k]
-  (let [to (unchecked-dec-int (unchecked-subtract-int (alength k) hash-prefix-size))
-        length (aget k to)]
-    (Arrays/copyOfRange k (unchecked-subtract-int to length) to)))
-
-
-(defn search-param-value-key->hash-prefix [^bytes k]
-  (let [to (alength k)]
-    (Arrays/copyOfRange k (unchecked-subtract-int to hash-prefix-size) to)))
 
 
 (defn decode-search-param-value-key [^ByteBuffer bb]
@@ -219,24 +198,6 @@
        (.put (byte (alength id)))
        (.put hash 0 hash-prefix-size)
        (.array))))
-
-
-(defn compartment-search-param-value-key->id [^bytes k]
-  (let [to (unchecked-dec-int (unchecked-subtract-int (alength k) hash-prefix-size))
-        length (aget k to)]
-    (Arrays/copyOfRange k (unchecked-subtract-int to length) to)))
-
-
-(defn hash->compartment-search-param-value-key! [^bytes hash ^bytes k]
-  (System/arraycopy hash 0 k (- (alength k) hash-prefix-size) hash-prefix-size))
-
-
-(defn compartment-search-param-value-key->hash-prefix [^bytes k]
-  (Arrays/copyOfRange k (- (alength k) hash-prefix-size) (alength k)))
-
-
-(defn compartment-search-param-value-key-hash= [^bytes k ^bytes hash]
-  (Arrays/equals k (- (alength k) hash-prefix-size) (alength k) hash 0 hash-prefix-size))
 
 
 
@@ -418,6 +379,24 @@
 (defrecord ResourceAsOfKV [^int tid id ^long t hash ^long state])
 
 
+(defn get-tid! ^long [^ByteBuffer buf]
+  (.getInt buf))
+
+
+(defn get-t! ^long [^ByteBuffer buf]
+  (descending-long (.getLong buf)))
+
+
+(defn get-hash! [^ByteBuffer buf]
+  (let [hash (byte-array hash-size)]
+    (.get buf hash)
+    hash))
+
+
+(defn get-state! ^long [^ByteBuffer buf]
+  (.getLong buf))
+
+
 (defn resource-as-of-kv-decoder
   "Returns a function which decodes an `ResourceAsOfKV` out of a key and a value
   ByteBuffer from the resource-as-of index.
@@ -432,18 +411,16 @@
   Both ByteBuffers are changed during decoding and have to be reset accordingly
   after decoding."
   []
-  (let [id (byte-array max-id-size)]
+  (let [ib (byte-array max-id-size)]
     (fn [^ByteBuffer kb ^ByteBuffer vb]
       (ResourceAsOfKV.
         (.getInt kb)
         (let [id-size (- (.remaining kb) t-size)]
-          (.get kb id 0 id-size)
-          (String. id 0 id-size iso-8859-1))
-        (descending-long (.getLong kb))
-        (let [hash (byte-array hash-size)]
-          (.get vb hash)
-          hash)
-        (.getLong vb)))))
+          (.get kb ib 0 id-size)
+          (String. ib 0 id-size iso-8859-1))
+        (get-t! kb)
+        (get-hash! vb)
+        (get-state! vb)))))
 
 
 ;; ---- TypeAsOf Index --------------------------------------------------------

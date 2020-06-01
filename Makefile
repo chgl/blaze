@@ -13,7 +13,7 @@ lint-cql:
 	cd modules/cql; clojure -A:clj-kondo --lint src test
 
 lint-db:
-	cd modules/db; clj-kondo --lint src test
+	cd modules/db; clojure -A:clj-kondo --lint src test
 
 lint-db-stub:
 	cd modules/db-stub; clojure -A:clj-kondo --lint src
@@ -35,6 +35,9 @@ lint-fhir-structure:
 
 lint-interaction:
 	cd modules/interaction; clojure -A:clj-kondo --lint src test
+
+lint-kv:
+	cd modules/kv; clojure -A:clj-kondo --lint src
 
 lint-module-base:
 	cd modules/module-base; clojure -A:clj-kondo --lint src
@@ -66,7 +69,7 @@ lint-terminology-service:
 lint-thread-pool-executor-collector:
 	cd modules/thread-pool-executor-collector; clojure -A:clj-kondo --lint src
 
-lint: lint-anomaly lint-coll lint-cql lint-db lint-db-stub lint-executor lint-interaction lint-extern-terminology-service lint-fhir-client lint-fhir-path lint-fhir-structure lint-interaction lint-module-base lint-openid-auth lint-operations-measure-evaluate-measure lint-rest-api lint-rest-util lint-rocksdb lint-spec lint-structure-definition lint-terminology-service lint-thread-pool-executor-collector
+lint: lint-anomaly lint-coll lint-cql lint-db lint-db-stub lint-executor lint-extern-terminology-service lint-fhir-client lint-fhir-path lint-fhir-structure lint-interaction lint-kv lint-module-base lint-openid-auth lint-operations-measure-evaluate-measure lint-rest-api lint-rest-util lint-rocksdb lint-spec lint-structure-definition lint-terminology-service lint-thread-pool-executor-collector
 	clojure -A:clj-kondo --lint src test
 
 modules/cql/cql-test:
