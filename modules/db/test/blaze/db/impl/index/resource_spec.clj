@@ -2,7 +2,7 @@
   (:require
     [blaze.db.impl.codec-spec]
     [blaze.db.impl.index.resource :as resource]
-    [blaze.db.kv-spec]
+    [blaze.kv.spec]
     [blaze.db.spec]
     [clojure.spec.alpha :as s]))
 

@@ -1,6 +1,6 @@
 (ns blaze.db.impl.iterators
   (:require
-    [blaze.db.kv :as kv])
+    [blaze.kv :as kv])
   (:import
     [clojure.lang IReduceInit]
     [java.nio ByteBuffer BufferOverflowException])

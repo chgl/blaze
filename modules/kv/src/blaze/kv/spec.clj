@@ -72,21 +72,21 @@
   :ret bytes?)
 
 
-(s/def :blaze.db.kv/put-entry-wo-cf
+(s/def :blaze.kv/put-entry-wo-cf
   (s/tuple bytes? bytes?))
 
 
-(s/def :blaze.db.kv/put-entry-w-cf
+(s/def :blaze.kv/put-entry-w-cf
   (s/tuple keyword? bytes? bytes?))
 
 
-(s/def :blaze.db.kv/put-entry
-  (s/or :kv :blaze.db.kv/put-entry-wo-cf
-        :cf-kv :blaze.db.kv/put-entry-w-cf))
+(s/def :blaze.kv/put-entry
+  (s/or :kv :blaze.kv/put-entry-wo-cf
+        :cf-kv :blaze.kv/put-entry-w-cf))
 
 
 (s/fdef kv/put
   :args (s/alt
-          :entries (s/cat :kv-store :blaze.db/kv-store :entries (s/coll-of :blaze.db.kv/put-entry))
+          :entries (s/cat :kv-store :blaze.db/kv-store :entries (s/coll-of :blaze.kv/put-entry))
           :kv (s/cat :kv-store :blaze.db/kv-store :key bytes? :value bytes?)))
 

@@ -6,7 +6,7 @@
     [blaze.db.impl.db-spec]
     [blaze.db.indexer.resource :refer [init-resource-indexer]]
     [blaze.db.indexer.tx :refer [init-tx-indexer]]
-    [blaze.db.kv.mem :refer [init-mem-kv-store]]
+    [blaze.kv.mem :refer [init-mem-kv-store]]
     [blaze.db.node :as node :refer [init-node]]
     [blaze.db.node-spec]
     [blaze.db.search-param-registry :as sr]

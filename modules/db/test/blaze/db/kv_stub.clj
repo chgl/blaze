@@ -1,7 +1,7 @@
 (ns blaze.db.kv-stub
   (:require
-    [blaze.db.kv :as kv]
-    [blaze.db.kv-spec]
+    [blaze.kv :as kv]
+    [blaze.kv.spec]
     [clojure.spec.alpha :as s]
     [clojure.spec.test.alpha :as st])
   (:refer-clojure :exclude [get]))

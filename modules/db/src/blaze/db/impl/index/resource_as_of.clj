@@ -2,7 +2,7 @@
   "Provides two public functions: `type-list` and `system-list`."
   (:require
     [blaze.coll.core :as coll]
-    [blaze.db.kv :as kv]
+    [blaze.kv :as kv]
     [blaze.db.impl.codec :as codec]
     [blaze.db.impl.index.resource :as resource :refer [mk-resource]]
     [blaze.db.impl.iterators :as i])

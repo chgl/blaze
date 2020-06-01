@@ -4,7 +4,7 @@
     [blaze.db.search-param-registry-spec]
     [blaze.db.indexer.resource :as resource]
     [blaze.db.indexer-spec]
-    [blaze.db.kv-spec]
+    [blaze.kv.spec]
     [blaze.executors :as ex]
     [blaze.executors_spec]
     [clojure.spec.alpha :as s]))

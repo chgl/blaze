@@ -6,7 +6,7 @@
     [blaze.db.impl.index.system-stats :as system-stats]
     [blaze.db.impl.index.type-stats :as type-stats]
     [blaze.db.indexer :as indexer]
-    [blaze.db.kv :as kv]
+    [blaze.kv :as kv]
     [blaze.module :refer [reg-collector]]
     [cognitect.anomalies :as anom]
     [integrant.core :as ig]

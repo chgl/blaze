@@ -3,7 +3,7 @@
     [blaze.db.impl.codec-spec]
     [blaze.db.impl.iterators-spec]
     [blaze.db.impl.search-param :as search-param]
-    [blaze.db.kv-spec]
+    [blaze.kv.spec]
     [blaze.db.search-param-registry-spec]
     [blaze.fhir.spec]
     [blaze.fhir-path-spec]
@@ -73,5 +73,5 @@
                :hash :blaze.resource/hash
                :resource :blaze/resource
                :linked-compartments (s/coll-of :blaze.db/compartment))
-  :ret (s/or :entries (s/coll-of :blaze.db.kv/put-entry-w-cf)
+  :ret (s/or :entries (s/coll-of :blaze.kv/put-entry-w-cf)
              :anomaly ::anom/anomaly))

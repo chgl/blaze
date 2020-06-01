@@ -1,7 +1,7 @@
 (ns blaze.db.node-spec
   (:require
     [blaze.db.indexer-spec]
-    [blaze.db.kv-spec]
+    [blaze.kv.spec]
     [blaze.db.node :as node]
     [blaze.db.search-param-registry-spec]
     [blaze.db.spec]

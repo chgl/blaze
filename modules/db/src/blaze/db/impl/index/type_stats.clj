@@ -15,7 +15,7 @@
   Each transaction which touches resources of a particular type, puts an entry
   with the new totals for this type at its t."
   (:require
-    [blaze.db.kv :as kv]
+    [blaze.kv :as kv]
     [blaze.db.impl.codec :as codec])
   (:import
     [java.io Closeable]

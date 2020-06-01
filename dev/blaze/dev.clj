@@ -2,8 +2,8 @@
   (:require
     [blaze.db.api :as d]
     [blaze.db.api-spec]
-    [blaze.db.kv.rocksdb :as rocksdb]
-    [blaze.db.kv.rocksdb-spec]
+    [blaze.kv.rocksdb :as rocksdb]
+    [blaze.kv.rocksdb-spec]
     [blaze.spec]
     [blaze.system :as system]
     [blaze.system-spec]
@@ -76,13 +76,13 @@
   (.invalidateAll ^Cache (:blaze.db/resource-cache system))
 
   (rocksdb/compact-range
-    (get system [:blaze.db.kv/rocksdb :blaze.db/kv-store])
+    (get system [:blaze.kv/rocksdb :blaze.db/kv-store])
     :resource-as-of-index
     true
     1)
 
   (rocksdb/compact-range
-    (get system [:blaze.db.kv/rocksdb :blaze.db/kv-store])
+    (get system [:blaze.kv/rocksdb :blaze.db/kv-store])
     :search-param-value-index
     true
     1)

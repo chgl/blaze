@@ -1,7 +1,7 @@
 (ns blaze.db.impl.index.resource
   (:require
     [blaze.db.impl.codec :as codec]
-    [blaze.db.kv :as kv]
+    [blaze.kv :as kv]
     [blaze.fhir.util :as fhir-util])
   (:import
     [clojure.lang IMeta IPersistentMap]

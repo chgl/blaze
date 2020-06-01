@@ -1,7 +1,7 @@
 (ns blaze.db.kv.rocksdb
   (:require
     [blaze.anomaly :refer [throw-anom]]
-    [blaze.db.kv :as kv]
+    [blaze.kv :as kv]
     [clojure.java.io :as io]
     [clojure.spec.alpha :as s]
     [cognitect.anomalies :as anom]
@@ -20,11 +20,6 @@
 
 
 (set! *warn-on-reflection* true)
-
-
-(defn- iterator->key [^RocksIterator i]
-  (when (.isValid i)
-    (.key i)))
 
 
 (deftype RocksKvIterator [^RocksIterator i]
@@ -331,7 +326,7 @@
   string?)
 
 
-(defmethod ig/pre-init-spec :blaze.db.kv/rocksdb [_]
+(defmethod ig/pre-init-spec :blaze.kv/rocksdb [_]
   (s/keys :req-un [::dir]))
 
 
@@ -340,7 +335,7 @@
           dir (pr-str opts)))
 
 
-(defmethod ig/init-key :blaze.db.kv/rocksdb
+(defmethod ig/init-key :blaze.kv/rocksdb
   [_ {:keys [dir block-cache stats opts column-families]}]
   (log/info (init-log-msg dir opts))
   (when-not (.isDirectory (io/file dir))
@@ -348,7 +343,7 @@
   (init-rocksdb-kv-store dir block-cache stats opts (merge {:default nil} column-families)))
 
 
-(defmethod ig/halt-key! :blaze.db.kv/rocksdb
+(defmethod ig/halt-key! :blaze.kv/rocksdb
   [_ store]
   (log/info "Close RocksDB key-value store")
   (.close ^Closeable store))

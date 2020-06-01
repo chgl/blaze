@@ -6,18 +6,18 @@
     [org.rocksdb Cache Statistics]))
 
 
-(s/def :blaze.db.kv.rocksdb/block-cache
+(s/def :blaze.kv.rocksdb/block-cache
   #(instance? Cache %))
 
 
-(s/def :blaze.db.kv.rocksdb/stats
+(s/def :blaze.kv.rocksdb/stats
   #(instance? Statistics %))
 
 
 (s/fdef rocksdb/init-rocksdb-kv-store
   :args (s/cat :dir string?
-               :block-cache :blaze.db.kv.rocksdb/block-cache
-               :stats :blaze.db.kv.rocksdb/stats
+               :block-cache :blaze.kv.rocksdb/block-cache
+               :stats :blaze.kv.rocksdb/stats
                :opts map? :column-families map?))
 
 

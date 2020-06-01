@@ -1,7 +1,7 @@
 (ns blaze.db.impl.index-spec
   (:require
     [blaze.db.impl.codec-spec]
-    [blaze.db.kv-spec]
+    [blaze.kv.spec]
     [blaze.db.impl.index :as index]
     [blaze.db.impl.index.spec]
     [blaze.db.impl.iterators-spec]

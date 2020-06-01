@@ -1,6 +1,6 @@
 (ns blaze.db.impl.index.system-as-of-spec
   (:require
-    [blaze.db.kv-spec]
+    [blaze.kv.spec]
     [blaze.db.impl.codec-spec]
     [blaze.db.impl.index.resource-spec]
     [blaze.db.impl.index.spec]

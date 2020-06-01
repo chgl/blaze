@@ -12,7 +12,7 @@
     [blaze.db.impl.index.type-as-of :as type-as-of]
     [blaze.db.impl.index.type-stats :as type-stats]
     [blaze.db.impl.protocols :as p]
-    [blaze.db.kv :as kv])
+    [blaze.kv :as kv])
   (:import
     [java.io Closeable Writer]
     [clojure.lang IReduceInit]))

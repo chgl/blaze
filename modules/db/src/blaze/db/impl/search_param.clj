@@ -4,7 +4,7 @@
     [blaze.db.impl.bytes :as bytes]
     [blaze.db.impl.codec :as codec]
     [blaze.db.impl.iterators :as i]
-    [blaze.db.kv :as kv]
+    [blaze.kv :as kv]
     [blaze.fhir-path :as fhir-path]
     [clj-fuzzy.phonetics :as phonetics]
     [clojure.spec.alpha :as s]

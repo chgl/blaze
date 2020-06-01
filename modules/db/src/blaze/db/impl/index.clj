@@ -9,7 +9,7 @@
     [blaze.db.impl.iterators :as i]
     [blaze.db.impl.search-param :as search-param]
     [blaze.db.impl.util :as util]
-    [blaze.db.kv :as kv]
+    [blaze.kv :as kv]
     [taoensso.nippy :as nippy])
   (:import
     [blaze.db.impl.index.resource Hash]

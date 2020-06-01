@@ -7,7 +7,7 @@
     [blaze.db.impl.index.resource :as resource]
     [blaze.db.impl.index.resource-as-of :as resource-as-of]
     [blaze.db.impl.protocols :as p]
-    [blaze.db.kv :as kv])
+    [blaze.kv :as kv])
   (:import
     [clojure.lang IReduceInit]
     [java.io Writer]))
